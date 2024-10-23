@@ -31,7 +31,7 @@ mypy = "*"
 ruff = "*"
 
 [tool.poetry.group.test.dependencies]
-blacksheep = "*"
+blacksheep = { version = "*", optional = true }
 fastapi = "*"
 httpx = "*"
 pydantic = "*"
@@ -69,6 +69,7 @@ exclude = [
     "tests/",
     "bench.py",
     "conftest.py",
+    "injection/integrations/blacksheep.py",
 ]
 follow_imports = "silent"
 no_implicit_reexport = true
@@ -83,7 +84,7 @@ warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 python_files = "test_*.py"
-addopts = "--tb short --cov ./ --cov-report term-missing:skip-covered"
+addopts = "--tb short --cov ./ --cov-report term-missing:skip-covered --ignore tests/integrations/test_blacksheep.py"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_mode = "auto"
 testpaths = "**/tests/"
