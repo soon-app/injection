@@ -572,22 +572,27 @@ class Module(Broker, EventListener):
         injectable = self[cls]
         return injectable.get_instance()
 
-    def get_instance[T](self, cls: InputType[T]) -> T | None:
+    def get_instance[T, Default](
+        self,
+        cls: InputType[T],
+        default: Default | None = None,
+    ) -> T | Default | None:
         try:
             return self.find_instance(cls)
         except KeyError:
-            return None
+            return default
 
-    def get_lazy_instance[T](
+    def get_lazy_instance[T, Default](
         self,
         cls: InputType[T],
+        default: Default | None = None,
         *,
         cache: bool = False,
-    ) -> Invertible[T | None]:
+    ) -> Invertible[T | Default | None]:
         if cache:
-            return Lazy(lambda: self.get_instance(cls))
+            return Lazy(lambda: self.get_instance(cls, default))
 
-        function = self.inject(lambda instance=None: instance)
+        function = self.inject(lambda instance=default: instance)
         function.__injected__.set_owner(cls)
         return SimpleInvertible(function)
 

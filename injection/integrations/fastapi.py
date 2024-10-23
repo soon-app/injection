@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from types import GenericAlias
-from typing import Any, TypeAliasType
+from typing import Any, ClassVar, TypeAliasType
 
 from injection import Module, mod
 from injection.exceptions import InjectionError
@@ -33,8 +33,10 @@ class InjectionDependency[T]:
     __call__: Callable[[], T]
     __class: type[T] | TypeAliasType | GenericAlias
 
+    __sentinel: ClassVar[object] = object()
+
     def __init__(self, cls: type[T] | TypeAliasType | GenericAlias, module: Module):
-        lazy_instance = module.get_lazy_instance(cls)
+        lazy_instance = module.get_lazy_instance(cls, default=self.__sentinel)
         self.__call__ = lambda: self.__ensure(~lazy_instance)
         self.__class = cls
 
@@ -47,8 +49,8 @@ class InjectionDependency[T]:
     def __hash__(self) -> int:
         return hash((self.__class,))
 
-    def __ensure(self, instance: T | None) -> T:
-        if instance is None:
+    def __ensure(self, instance: T | Any) -> T:
+        if instance is self.__sentinel:
             raise InjectionError(f"`{self.__class}` is an unknown dependency.")
 
         return instance

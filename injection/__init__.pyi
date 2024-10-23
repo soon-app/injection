@@ -136,18 +136,23 @@ class Module:
         parameter or an exception will be raised.
         """
 
-    def get_instance[T](self, cls: _InputType[T]) -> T | None:
+    def get_instance[T, Default](
+        self,
+        cls: _InputType[T],
+        default: Default | None = ...,
+    ) -> T | Default | None:
         """
         Function used to retrieve an instance associated with the type passed in
         parameter or return `None`.
         """
 
-    def get_lazy_instance[T](
+    def get_lazy_instance[T, Default](
         self,
         cls: _InputType[T],
+        default: Default | None = ...,
         *,
         cache: bool = ...,
-    ) -> _Invertible[T | None]:
+    ) -> _Invertible[T | Default | None]:
         """
         Function used to retrieve an instance associated with the type passed in
         parameter or `None`. Return a `Invertible` object. To access the instance
