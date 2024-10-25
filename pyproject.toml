@@ -54,6 +54,7 @@ exclude_lines = [
     "pass",
     "pragma: no cover",
     "raise NotImplementedError",
+    "return NotImplemented",
 ]
 
 [tool.coverage.run]

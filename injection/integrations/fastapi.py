@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from types import GenericAlias
-from typing import Any, ClassVar, TypeAliasType
+from typing import Any, ClassVar, Self, TypeAliasType
 
 from injection import Module, mod
 from injection.exceptions import InjectionError
@@ -28,10 +28,11 @@ def Inject[T](  # noqa: N802
 
 
 class InjectionDependency[T]:
-    __slots__ = ("__call__", "__class")
+    __slots__ = ("__call__", "__class", "__module")
 
     __call__: Callable[[], T]
     __class: type[T] | TypeAliasType | GenericAlias
+    __module: Module
 
     __sentinel: ClassVar[object] = object()
 
@@ -39,15 +40,22 @@ class InjectionDependency[T]:
         lazy_instance = module.get_lazy_instance(cls, default=self.__sentinel)
         self.__call__ = lambda: self.__ensure(~lazy_instance)
         self.__class = cls
+        self.__module = module
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, type(self)):
-            return hash(self) == hash(other)
+            return self.__key == other.__key
 
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash((self.__class,))
+        return hash(self.__key)
+
+    @property
+    def __key(
+        self,
+    ) -> tuple[type[Self], type[T] | TypeAliasType | GenericAlias, Module]:
+        return type(self), self.__class, self.__module
 
     def __ensure(self, instance: T | Any) -> T:
         if instance is self.__sentinel:
