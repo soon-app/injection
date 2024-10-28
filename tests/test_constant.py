@@ -10,7 +10,7 @@ class TestConstant:
 
         instance_1 = get_instance(SomeInjectable)
         instance_2 = get_instance(SomeInjectable)
-        assert instance_1 is instance_2
+        assert instance_1 is instance_2 is not None
 
     def test_constant_with_on(self):
         class A: ...

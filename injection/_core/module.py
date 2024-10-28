@@ -518,7 +518,7 @@ class Module(Broker, EventListener):
             self.injectable(
                 lambda: ~lazy_instance,
                 inject=False,
-                on=on,
+                on=(wp, on),
                 mode=mode,
             )
             return wp
