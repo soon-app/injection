@@ -514,9 +514,10 @@ class Module(Broker, EventListener):
         mode: Mode | ModeStr = Mode.get_default(),
     ):
         def decorator(wp):  # type: ignore[no-untyped-def]
-            instance = wp()
-            self.set_constant(
-                instance,
+            lazy_instance = Lazy(wp)
+            self.injectable(
+                lambda: ~lazy_instance,
+                inject=False,
                 on=on,
                 mode=mode,
             )

@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from types import GenericAlias
-from typing import Any, ClassVar, Self, TypeAliasType
+from typing import Any, ClassVar, TypeAliasType
 
 from injection import Module, mod
 from injection.exceptions import InjectionError
@@ -52,10 +52,8 @@ class InjectionDependency[T]:
         return hash(self.__key)
 
     @property
-    def __key(
-        self,
-    ) -> tuple[type[Self], type[T] | TypeAliasType | GenericAlias, Module]:
-        return type(self), self.__class, self.__module
+    def __key(self) -> tuple[type[T] | TypeAliasType | GenericAlias, Module]:
+        return self.__class, self.__module
 
     def __ensure(self, instance: T | Any) -> T:
         if instance is self.__sentinel:
