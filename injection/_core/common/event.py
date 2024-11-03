@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from contextlib import ExitStack, contextmanager, suppress
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from typing import ContextManager, Self
 from weakref import WeakSet
@@ -40,7 +40,5 @@ class EventChannel:
         return self
 
     def remove_listener(self, listener: EventListener) -> Self:
-        with suppress(KeyError):
-            self.__listeners.remove(listener)
-
+        self.__listeners.discard(listener)
         return self
