@@ -9,6 +9,7 @@ from typing import (
     Protocol,
     Self,
     final,
+    overload,
     runtime_checkable,
 )
 
@@ -136,23 +137,31 @@ class Module:
         parameter or an exception will be raised.
         """
 
+    @overload
     def get_instance[T, Default](
         self,
         cls: _InputType[T],
-        default: Default | None = ...,
-    ) -> T | Default | None:
+        default: Default,
+    ) -> T | Default:
         """
         Function used to retrieve an instance associated with the type passed in
         parameter or return `None`.
         """
 
+    @overload
+    def get_instance[T, _](
+        self,
+        cls: _InputType[T],
+        default: None = ...,
+    ) -> T | None: ...
+    @overload
     def get_lazy_instance[T, Default](
         self,
         cls: _InputType[T],
-        default: Default | None = ...,
+        default: Default,
         *,
         cache: bool = ...,
-    ) -> _Invertible[T | Default | None]:
+    ) -> _Invertible[T | Default]:
         """
         Function used to retrieve an instance associated with the type passed in
         parameter or `None`. Return a `Invertible` object. To access the instance
@@ -162,6 +171,14 @@ class Module:
         Example: instance = ~lazy_instance
         """
 
+    @overload
+    def get_lazy_instance[T, _](
+        self,
+        cls: _InputType[T],
+        default: None = ...,
+        *,
+        cache: bool = ...,
+    ) -> _Invertible[T | None]: ...
     def init_modules(self, *modules: Module) -> Self:
         """
         Function to clean modules in use and to use those passed as parameters.
@@ -243,3 +260,10 @@ class Mode(Enum):
     FALLBACK = ...
     NORMAL = ...
     OVERRIDE = ...
+
+class LazyInstance[T]:
+    def __init__(self, cls: _InputType[T], module: Module = ...) -> None: ...
+    @overload
+    def __get__(self, instance: object, owner: type | None = ...) -> T: ...
+    @overload
+    def __get__(self, instance: None = ..., owner: type | None = ...) -> Self: ...
