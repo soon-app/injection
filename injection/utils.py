@@ -10,13 +10,13 @@ from injection import mod
 __all__ = ("load_packages", "load_profile")
 
 
-def load_profile(name: str, /, *other_profile_names: str) -> ContextManager[None]:
+def load_profile(*names: str) -> ContextManager[None]:
     """
     Injection module initialization function based on profile name.
     A profile name is equivalent to an injection module name.
     """
 
-    modules = tuple(mod(module_name) for module_name in (name, *other_profile_names))
+    modules = tuple(mod(module_name) for module_name in names)
 
     for module in modules:
         module.unlock()

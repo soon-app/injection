@@ -1,7 +1,9 @@
+from ._core.descriptors import LazyInstance
 from ._core.module import Injectable, Mode, Module, Priority
 
 __all__ = (
     "Injectable",
+    "LazyInstance",
     "Mode",
     "Module",
     "Priority",

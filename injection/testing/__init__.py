@@ -21,5 +21,5 @@ test_injectable = mod(_TEST_PROFILE_NAME).injectable
 test_singleton = mod(_TEST_PROFILE_NAME).singleton
 
 
-def load_test_profile(*other_profile_names: str) -> ContextManager[None]:
-    return load_profile(_TEST_PROFILE_NAME, *other_profile_names)
+def load_test_profile(*names: str) -> ContextManager[None]:
+    return load_profile(_TEST_PROFILE_NAME, *names)
