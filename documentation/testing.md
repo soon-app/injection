@@ -1,5 +1,3 @@
-from tests.integrations.test_fastapi import Dependency
-
 # Testing
 
 ## Test configuration
@@ -11,7 +9,6 @@ Here is the [Pytest](https://github.com/pytest-dev/pytest) fixture for using tes
 
 import pytest
 from injection.testing import load_test_profile
-
 
 @pytest.fixture(scope="session", autouse=True)
 def autouse_test_injectables():
