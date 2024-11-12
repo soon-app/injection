@@ -1,3 +1,5 @@
+from tests.integrations.test_fastapi import Dependency
+
 # Testing
 
 ## Test configuration
@@ -57,4 +59,26 @@ class ServiceC:
 
 service_c = ServiceC()
 set_test_constant(service_c)
+```
+
+## Writing test classes
+
+With Pytest, it's not possible to implement the `__init__` method of a test class, which makes retrieving dependencies 
+a little more complicated.
+The solution provided by this package is based on a descriptor `LazyInstance`.
+Each time the descriptor is accessed with `self`, the dependency is resolved. So **be careful** with `@injectable`, if you 
+want to keep its state, assign it to a variable.
+
+Here's an example:
+
+```python
+from injection import LazyInstance
+
+class TestSomething:
+    dependency = LazyInstance(DependencyClass)
+
+    def test_something(self):
+        # ...
+        self.dependency.do_work()
+        # ...
 ```

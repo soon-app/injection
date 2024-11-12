@@ -1,17 +1,10 @@
-from injection import inject
+from injection import LazyInstance
 
 from ...sources.factories.user_factory import UserFactory
 
 
 class TestUserFactory:
-    @classmethod
-    def setup_class(cls):
-        cls.init_dependencies()
-
-    @classmethod
-    @inject
-    def init_dependencies(cls, factory: UserFactory):
-        cls.factory = factory
+    factory = LazyInstance(UserFactory)
 
     def test_build_with_success_return_user(self):
         username = "test"
