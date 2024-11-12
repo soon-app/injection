@@ -1,21 +1,12 @@
 from uuid import UUID
 
-from injection import inject
+from injection import LazyInstance
 
 from ...sources.services.uuid_service import UUIDService
 
 
 class TestUUIDService:
-    uuid_service: UUIDService
-
-    @classmethod
-    def setup_class(cls):
-        cls.init_dependencies()
-
-    @classmethod
-    @inject
-    def init_dependencies(cls, uuid_service: UUIDService):
-        cls.uuid_service = uuid_service
+    uuid_service = LazyInstance(UUIDService)
 
     def test_generate_with_success_return_uuid(self):
         uuid = self.uuid_service.generate()
