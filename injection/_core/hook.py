@@ -2,12 +2,13 @@ import itertools
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass, field
 from inspect import isclass, isgeneratorfunction
-from typing import Any, Self
+from typing import Any, Self, TypeGuard
 
 from injection.exceptions import HookError
 
 type HookGenerator[T] = Generator[None, T, T]
-type HookFunction[**P, T] = Callable[P, T | HookGenerator[T]]
+type HookGeneratorFunction[**P, T] = Callable[P, HookGenerator[T]]
+type HookFunction[**P, T] = Callable[P, T] | HookGeneratorFunction[P, T]
 
 
 @dataclass(eq=False, frozen=True, slots=True)
@@ -18,12 +19,12 @@ class Hook[**P, T]:
         repr=False,
     )
 
-    def __call__(  # type: ignore[no-untyped-def]
+    def __call__(
         self,
         wrapped: HookFunction[P, T] | type[HookFunction[P, T]] | None = None,
         /,
-    ):
-        def decorator(wp):  # type: ignore[no-untyped-def]
+    ) -> Any:
+        def decorator(wp: Any) -> Any:
             self.add(wp() if isclass(wp) else wp)
             return wp
 
@@ -48,11 +49,11 @@ class Hook[**P, T]:
         handler: Callable[P, T],
         function: HookFunction[P, T],
     ) -> Callable[P, T]:
-        if not cls.__is_generator_function(function):
+        if not cls.__is_hook_generator_function(function):
             return function  # type: ignore[return-value]
 
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            hook: HookGenerator[T] = function(*args, **kwargs)  # type: ignore[assignment]
+            hook: HookGenerator[T] = function(*args, **kwargs)
 
             try:
                 next(hook)
@@ -88,9 +89,11 @@ class Hook[**P, T]:
         return handler
 
     @staticmethod
-    def __is_generator_function(obj: Any) -> bool:
-        for o in obj, getattr(obj, "__call__", None):
-            if isgeneratorfunction(o):
+    def __is_hook_generator_function[**_P, _T](
+        function: HookFunction[_P, _T],
+    ) -> TypeGuard[HookGeneratorFunction[_P, _T]]:
+        for fn in function, getattr(function, "__call__", None):
+            if isgeneratorfunction(fn):
                 return True
 
         return False

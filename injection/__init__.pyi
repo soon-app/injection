@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import ContextDecorator
 from enum import Enum
 from logging import Logger
@@ -21,6 +21,9 @@ from ._core.module import ModeStr, PriorityStr
 
 _: Module = ...
 
+afind_instance = _.afind_instance
+aget_instance = _.aget_instance
+aget_lazy_instance = _.aget_lazy_instance
 constant = _.constant
 find_instance = _.find_instance
 get_instance = _.get_instance
@@ -53,59 +56,59 @@ class Module:
     def __contains__(self, cls: _InputType[Any], /) -> bool: ...
     @property
     def is_locked(self) -> bool: ...
-    def inject[**P, T](self, wrapped: Callable[P, T] = ..., /):  # type: ignore[no-untyped-def]
+    def inject[**P, T](self, wrapped: Callable[P, T] = ..., /) -> Any:
         """
         Decorator applicable to a class or function. Inject function dependencies using
         parameter type annotations. If applied to a class, the dependencies resolved
         will be those of the `__init__` method.
         """
 
-    def injectable[**P, T](  # type: ignore[no-untyped-def]
+    def injectable[**P, T](
         self,
-        wrapped: Callable[P, T] = ...,
+        wrapped: Callable[P, T] | Callable[P, Awaitable[T]] = ...,
         /,
         *,
         cls: _InjectableFactory[T] = ...,
         inject: bool = ...,
         on: _TypeInfo[T] = ...,
         mode: Mode | ModeStr = ...,
-    ):
+    ) -> Any:
         """
         Decorator applicable to a class or function. It is used to indicate how the
         injectable will be constructed. At injection time, a new instance will be
         injected each time.
         """
 
-    def singleton[**P, T](  # type: ignore[no-untyped-def]
+    def singleton[**P, T](
         self,
-        wrapped: Callable[P, T] = ...,
+        wrapped: Callable[P, T] | Callable[P, Awaitable[T]] = ...,
         /,
         *,
         inject: bool = ...,
         on: _TypeInfo[T] = ...,
         mode: Mode | ModeStr = ...,
-    ):
+    ) -> Any:
         """
         Decorator applicable to a class or function. It is used to indicate how the
         singleton will be constructed. At injection time, the injected instance will
         always be the same.
         """
 
-    def should_be_injectable[T](self, wrapped: type[T] = ..., /):  # type: ignore[no-untyped-def]
+    def should_be_injectable[T](self, wrapped: type[T] = ..., /) -> Any:
         """
         Decorator applicable to a class. It is used to specify whether an injectable
         should be registered. Raise an exception at injection time if the class isn't
         registered.
         """
 
-    def constant[T](  # type: ignore[no-untyped-def]
+    def constant[T](
         self,
         wrapped: type[T] = ...,
         /,
         *,
         on: _TypeInfo[T] = ...,
         mode: Mode | ModeStr = ...,
-    ):
+    ) -> Any:
         """
         Decorator applicable to a class or function. It is used to indicate how the
         constant is constructed. At injection time, the injected instance will always
@@ -131,12 +134,25 @@ class Module:
         wrapped: Callable[P, T],
         /,
     ) -> Callable[P, T]: ...
+    async def afind_instance[T](self, cls: _InputType[T]) -> T: ...
     def find_instance[T](self, cls: _InputType[T]) -> T:
         """
         Function used to retrieve an instance associated with the type passed in
         parameter or an exception will be raised.
         """
 
+    @overload
+    async def aget_instance[T, Default](
+        self,
+        cls: _InputType[T],
+        default: Default,
+    ) -> T | Default: ...
+    @overload
+    async def aget_instance[T, _](
+        self,
+        cls: _InputType[T],
+        default: None = ...,
+    ) -> T | None: ...
     @overload
     def get_instance[T, Default](
         self,
@@ -154,6 +170,22 @@ class Module:
         cls: _InputType[T],
         default: None = ...,
     ) -> T | None: ...
+    @overload
+    def aget_lazy_instance[T, Default](
+        self,
+        cls: _InputType[T],
+        default: Default,
+        *,
+        cache: bool = ...,
+    ) -> Awaitable[T | Default]: ...
+    @overload
+    def aget_lazy_instance[T, _](
+        self,
+        cls: _InputType[T],
+        default: None = ...,
+        *,
+        cache: bool = ...,
+    ) -> Awaitable[T | None]: ...
     @overload
     def get_lazy_instance[T, Default](
         self,
@@ -229,6 +261,7 @@ class Module:
         Function to unlock the module by deleting cached instances of singletons.
         """
 
+    async def all_ready(self) -> None: ...
     def add_logger(self, logger: Logger) -> Self: ...
     @classmethod
     def from_name(cls, name: str) -> Module:
@@ -252,6 +285,8 @@ class Injectable[T](Protocol):
     @property
     def is_locked(self) -> bool: ...
     def unlock(self) -> None: ...
+    @abstractmethod
+    async def aget_instance(self) -> T: ...
     @abstractmethod
     def get_instance(self) -> T: ...
 
