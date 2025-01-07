@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pytest
 from pydantic import BaseModel
 
-from injection import get_instance, singleton
+from injection import aget_instance, get_instance, singleton
 
 
 class TestSingleton:
@@ -23,6 +23,20 @@ class TestSingleton:
             return SomeClass()
 
         instance_1 = get_instance(SomeClass)
+        instance_2 = get_instance(SomeClass)
+        assert instance_1 is instance_2
+
+    async def test_singleton_with_async_recipe(self):
+        class SomeClass: ...
+
+        @singleton
+        async def recipe() -> SomeClass:
+            return SomeClass()
+
+        with pytest.raises(RuntimeError):
+            get_instance(SomeClass)
+
+        instance_1 = await aget_instance(SomeClass)
         instance_2 = get_instance(SomeClass)
         assert instance_1 is instance_2
 

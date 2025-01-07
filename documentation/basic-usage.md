@@ -89,6 +89,14 @@ from injection import get_instance
 service_a = get_instance(ServiceA)
 ```
 
+_Example with `aget_instance` function:_
+
+```python
+from injection import aget_instance
+
+service_a = await aget_instance(ServiceA)
+```
+
 _Example with `get_lazy_instance` function:_
 
 ```python
@@ -97,6 +105,16 @@ from injection import get_lazy_instance
 lazy_service_a = get_lazy_instance(ServiceA)
 # ...
 service_a = ~lazy_service_a
+```
+
+_Example with `aget_lazy_instance` function:_
+
+```python
+from injection import aget_lazy_instance
+
+lazy_service_a = aget_lazy_instance(ServiceA)
+# ...
+service_a = await lazy_service_a
 ```
 
 ## Inheritance
@@ -157,6 +175,28 @@ from injection import injectable
 @injectable
 def service_d_recipe() -> ServiceD:
     """ recipe implementation """
+```
+
+### Async recipes
+
+An asynchronous recipe is defined in the same way as a conventional recipe. To retrieve an instance of an asynchronous
+recipe, you need to be in an asynchronous context (decorate an asynchronous function with `@inject` or use an
+asynchronous getter).
+
+Asynchronous singletons can be retrieved in a synchronous context if they have already been instantiated. The
+`all_ready` method ensures that all singletons have been instantiated.
+
+```python
+from injection import get_instance, mod, singleton
+
+@singleton
+async def service_e_recipe() -> ServiceE:
+    """ recipe implementation """
+
+async def main():
+    await mod().all_ready()
+    # ...
+    service_e = get_instance(ServiceE)
 ```
 
 ## Working with type aliases

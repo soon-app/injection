@@ -83,6 +83,43 @@ class TestInject:
 
         my_function(*arguments)
 
+    async def test_inject_with_async_function(self):
+        class Dependency: ...
+
+        @injectable
+        async def recipe() -> Dependency:
+            return Dependency()
+
+        @inject
+        def my_function_sync(_: Dependency): ...
+
+        with pytest.raises(RuntimeError):
+            my_function_sync()
+
+        @inject
+        async def my_function_async(instance: Dependency):
+            assert isinstance(instance, Dependency)
+
+        await my_function_async()
+
+    async def test_inject_with_deep_async_dependency(self):
+        class A: ...
+
+        @injectable
+        async def a_recipe() -> A:
+            return A()
+
+        @injectable
+        class B:
+            def __init__(self, a: A):
+                self.a = a
+
+        @inject
+        async def my_function(b: B):
+            assert isinstance(b, B)
+
+        await my_function()
+
     def test_inject_with_generic_injectable(self):
         @inject
         def my_function(instance: SomeGenericInjectable[str]):

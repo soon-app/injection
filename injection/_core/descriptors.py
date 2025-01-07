@@ -2,7 +2,7 @@ from typing import Self
 
 from injection._core.common.invertible import Invertible
 from injection._core.common.type import InputType
-from injection._core.module import Module
+from injection._core.module import Module, mod
 
 
 class LazyInstance[T]:
@@ -11,8 +11,8 @@ class LazyInstance[T]:
     __value: Invertible[T]
 
     def __init__(self, cls: InputType[T], module: Module | None = None) -> None:
-        module = module or Module.default()
-        self.__value = module.get_lazy_instance(cls, default=NotImplemented)  # type: ignore[assignment]
+        module = module or mod()
+        self.__value = module.get_lazy_instance(cls, default=NotImplemented)
 
     def __get__(
         self,

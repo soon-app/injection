@@ -1,5 +1,6 @@
 from ._core.descriptors import LazyInstance
-from ._core.module import Injectable, Mode, Module, Priority
+from ._core.injectables import Injectable
+from ._core.module import Mode, Module, Priority, mod
 
 __all__ = (
     "Injectable",
@@ -7,6 +8,9 @@ __all__ = (
     "Mode",
     "Module",
     "Priority",
+    "afind_instance",
+    "aget_instance",
+    "aget_lazy_instance",
     "constant",
     "find_instance",
     "get_instance",
@@ -19,14 +23,9 @@ __all__ = (
     "singleton",
 )
 
-
-def mod(name: str | None = None, /) -> Module:
-    if name is None:
-        return Module.default()
-
-    return Module.from_name(name)
-
-
+afind_instance = mod().afind_instance
+aget_instance = mod().aget_instance
+aget_lazy_instance = mod().aget_lazy_instance
 constant = mod().constant
 find_instance = mod().find_instance
 get_instance = mod().get_instance

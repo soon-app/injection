@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import (
+    AsyncIterator,
+    Awaitable,
     Callable,
     Collection,
     Iterable,
     Iterator,
     Mapping,
-    MutableMapping,
 )
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import partialmethod, singledispatchmethod, update_wrapper
-from inspect import Signature, isclass
+from inspect import Signature, isclass, iscoroutinefunction
 from logging import Logger, getLogger
 from queue import Empty, Queue
 from types import MethodType
@@ -25,22 +27,34 @@ from typing import (
     ContextManager,
     Literal,
     NamedTuple,
-    NoReturn,
     Protocol,
     Self,
+    TypeGuard,
+    overload,
     override,
     runtime_checkable,
 )
 from uuid import uuid4
 
+from injection._core.common.asynchronous import (
+    AsyncCaller,
+    Caller,
+    SimpleAwaitable,
+    SyncCaller,
+)
 from injection._core.common.event import Event, EventChannel, EventListener
 from injection._core.common.invertible import Invertible, SimpleInvertible
 from injection._core.common.lazy import Lazy, LazyMapping
 from injection._core.common.threading import synchronized
 from injection._core.common.type import InputType, TypeInfo, get_return_types
 from injection._core.hook import Hook, apply_hooks
+from injection._core.injectables import (
+    Injectable,
+    ShouldBeInjectable,
+    SimpleInjectable,
+    SingletonInjectable,
+)
 from injection.exceptions import (
-    InjectionError,
     ModuleError,
     ModuleLockError,
     ModuleNotUsedError,
@@ -130,86 +144,6 @@ class ModulePriorityUpdated(ModuleEvent):
 
 
 """
-Injectables
-"""
-
-
-@runtime_checkable
-class Injectable[T](Protocol):
-    __slots__ = ()
-
-    @property
-    def is_locked(self) -> bool:
-        return False
-
-    def unlock(self) -> None:
-        return
-
-    @abstractmethod
-    def get_instance(self) -> T:
-        raise NotImplementedError
-
-
-@dataclass(repr=False, frozen=True, slots=True)
-class BaseInjectable[T](Injectable[T], ABC):
-    factory: Callable[..., T]
-
-
-class SimpleInjectable[T](BaseInjectable[T]):
-    __slots__ = ()
-
-    @override
-    def get_instance(self) -> T:
-        return self.factory()
-
-
-class SingletonInjectable[T](BaseInjectable[T]):
-    __slots__ = ("__dict__",)
-
-    __key: ClassVar[str] = "$instance"
-
-    @property
-    def cache(self) -> MutableMapping[str, Any]:
-        return self.__dict__
-
-    @property
-    @override
-    def is_locked(self) -> bool:
-        return self.__key in self.cache
-
-    @override
-    def unlock(self) -> None:
-        self.cache.clear()
-
-    @override
-    def get_instance(self) -> T:
-        with suppress(KeyError):
-            return self.cache[self.__key]
-
-        with synchronized():
-            instance = self.factory()
-            self.cache[self.__key] = instance
-
-        return instance
-
-
-@dataclass(repr=False, frozen=True, slots=True)
-class ShouldBeInjectable[T](Injectable[T]):
-    cls: type[T]
-
-    @override
-    def get_instance(self) -> NoReturn:
-        raise InjectionError(f"`{self.cls}` should be an injectable.")
-
-    @classmethod
-    def from_callable(cls, callable: Callable[..., T]) -> Self:
-        if not isclass(callable):
-            raise TypeError(f"`{callable}` should be a class.")
-
-        return cls(callable)
-
-
-"""
 Broker
 """
 
@@ -235,6 +169,10 @@ class Broker(Protocol):
     def unlock(self) -> Self:
         raise NotImplementedError
 
+    @abstractmethod
+    async def all_ready(self) -> None:
+        raise NotImplementedError
+
 
 """
 Locator
@@ -257,7 +195,7 @@ class Mode(StrEnum):
 
 type ModeStr = Literal["fallback", "normal", "override"]
 
-type InjectableFactory[T] = Callable[[Callable[..., T]], Injectable[T]]
+type InjectableFactory[T] = Callable[[Caller[..., T]], Injectable[T]]
 
 
 class Record[T](NamedTuple):
@@ -267,7 +205,7 @@ class Record[T](NamedTuple):
 
 @dataclass(repr=False, eq=False, kw_only=True, slots=True)
 class Updater[T]:
-    factory: Callable[..., T]
+    factory: Caller[..., T]
     classes: Iterable[InputType[T]]
     injectable_factory: InjectableFactory[T]
     mode: Mode
@@ -353,6 +291,11 @@ class Locator(Broker):
             injectable.unlock()
 
         return self
+
+    @override
+    async def all_ready(self) -> None:
+        for injectable in self.__injectables:
+            await injectable.aget_instance()
 
     def add_listener(self, listener: EventListener) -> Self:
         self.__channel.add_listener(listener)
@@ -466,18 +409,20 @@ class Module(Broker, EventListener):
         yield from tuple(self.__modules)
         yield self.__locator
 
-    def injectable[**P, T](  # type: ignore[no-untyped-def]
+    def injectable[**P, T](
         self,
-        wrapped: Callable[P, T] | None = None,
+        wrapped: Callable[P, T] | Callable[P, Awaitable[T]] | None = None,
         /,
         *,
         cls: InjectableFactory[T] = SimpleInjectable,
         inject: bool = True,
         on: TypeInfo[T] = (),
         mode: Mode | ModeStr = Mode.get_default(),
-    ):
-        def decorator(wp):  # type: ignore[no-untyped-def]
-            factory = self.make_injected_function(wp) if inject else wp
+    ) -> Any:
+        def decorator(
+            wp: Callable[P, T] | Callable[P, Awaitable[T]],
+        ) -> Callable[P, T] | Callable[P, Awaitable[T]]:
+            factory = _get_caller(self.make_injected_function(wp) if inject else wp)
             classes = get_return_types(wp, on)
             updater = Updater(
                 factory=factory,
@@ -492,12 +437,12 @@ class Module(Broker, EventListener):
 
     singleton = partialmethod(injectable, cls=SingletonInjectable)
 
-    def should_be_injectable[T](self, wrapped: type[T] | None = None, /):  # type: ignore[no-untyped-def]
-        def decorator(wp):  # type: ignore[no-untyped-def]
+    def should_be_injectable[T](self, wrapped: type[T] | None = None, /) -> Any:
+        def decorator(wp: type[T]) -> type[T]:
             updater = Updater(
-                factory=wp,
+                factory=SyncCaller(wp),
                 classes=(wp,),
-                injectable_factory=ShouldBeInjectable.from_callable,
+                injectable_factory=lambda _: ShouldBeInjectable(wp),
                 mode=Mode.FALLBACK,
             )
             self.update(updater)
@@ -505,15 +450,15 @@ class Module(Broker, EventListener):
 
         return decorator(wrapped) if wrapped else decorator
 
-    def constant[T](  # type: ignore[no-untyped-def]
+    def constant[T](
         self,
         wrapped: type[T] | None = None,
         /,
         *,
         on: TypeInfo[T] = (),
         mode: Mode | ModeStr = Mode.get_default(),
-    ):
-        def decorator(wp):  # type: ignore[no-untyped-def]
+    ) -> Any:
+        def decorator(wp: type[T]) -> type[T]:
             lazy_instance = Lazy(wp)
             self.injectable(
                 lambda: ~lazy_instance,
@@ -545,8 +490,8 @@ class Module(Broker, EventListener):
         )
         return self
 
-    def inject[**P, T](self, wrapped: Callable[P, T] | None = None, /):  # type: ignore[no-untyped-def]
-        def decorator(wp):  # type: ignore[no-untyped-def]
+    def inject[**P, T](self, wrapped: Callable[P, T] | None = None, /) -> Any:
+        def decorator(wp: Callable[P, T]) -> Callable[P, T]:
             if isclass(wp):
                 wp.__init__ = self.inject(wp.__init__)
                 return wp
@@ -555,47 +500,135 @@ class Module(Broker, EventListener):
 
         return decorator(wrapped) if wrapped else decorator
 
+    @overload
     def make_injected_function[**P, T](
         self,
         wrapped: Callable[P, T],
         /,
-    ) -> InjectedFunction[P, T]:
-        injected = Injected(wrapped)
+    ) -> SyncInjectedFunction[P, T]: ...
 
-        @injected.on_setup
+    @overload
+    def make_injected_function[**P, T](
+        self,
+        wrapped: Callable[P, Awaitable[T]],
+        /,
+    ) -> AsyncInjectedFunction[P, T]: ...
+
+    def make_injected_function(self, wrapped, /):  # type: ignore[no-untyped-def]
+        metadata = InjectMetadata(wrapped)
+
+        @metadata.on_setup
         def listen() -> None:
-            injected.update(self)
-            self.add_listener(injected)
+            metadata.update(self)
+            self.add_listener(metadata)
 
-        return InjectedFunction(injected)
+        if iscoroutinefunction(wrapped):
+            return AsyncInjectedFunction(metadata)
+
+        return SyncInjectedFunction(metadata)
+
+    async def afind_instance[T](self, cls: InputType[T]) -> T:
+        injectable = self[cls]
+        return await injectable.aget_instance()
 
     def find_instance[T](self, cls: InputType[T]) -> T:
         injectable = self[cls]
         return injectable.get_instance()
 
+    @overload
+    async def aget_instance[T, Default](
+        self,
+        cls: InputType[T],
+        default: Default,
+    ) -> T | Default: ...
+
+    @overload
+    async def aget_instance[T](
+        self,
+        cls: InputType[T],
+        default: None = ...,
+    ) -> T | None: ...
+
+    async def aget_instance(self, cls, default=None):  # type: ignore[no-untyped-def]
+        try:
+            return await self.afind_instance(cls)
+        except KeyError:
+            return default
+
+    @overload
     def get_instance[T, Default](
         self,
         cls: InputType[T],
-        default: Default | None = None,
-    ) -> T | Default | None:
+        default: Default,
+    ) -> T | Default: ...
+
+    @overload
+    def get_instance[T](
+        self,
+        cls: InputType[T],
+        default: None = ...,
+    ) -> T | None: ...
+
+    def get_instance(self, cls, default=None):  # type: ignore[no-untyped-def]
         try:
             return self.find_instance(cls)
         except KeyError:
             return default
 
+    @overload
+    def aget_lazy_instance[T, Default](
+        self,
+        cls: InputType[T],
+        default: Default,
+        *,
+        cache: bool = ...,
+    ) -> Awaitable[T | Default]: ...
+
+    @overload
+    def aget_lazy_instance[T](
+        self,
+        cls: InputType[T],
+        default: None = ...,
+        *,
+        cache: bool = ...,
+    ) -> Awaitable[T | None]: ...
+
+    def aget_lazy_instance(self, cls, default=None, *, cache=False):  # type: ignore[no-untyped-def]
+        if cache:
+            coroutine = self.aget_instance(cls, default)
+            return asyncio.ensure_future(coroutine)
+
+        function = self.make_injected_function(lambda instance=default: instance)
+        metadata = function.__inject_metadata__
+        metadata.set_owner(cls)
+        return SimpleAwaitable(metadata.acall)
+
+    @overload
     def get_lazy_instance[T, Default](
         self,
         cls: InputType[T],
-        default: Default | None = None,
+        default: Default,
         *,
-        cache: bool = False,
-    ) -> Invertible[T | Default | None]:
+        cache: bool = ...,
+    ) -> Invertible[T | Default]: ...
+
+    @overload
+    def get_lazy_instance[T](
+        self,
+        cls: InputType[T],
+        default: None = ...,
+        *,
+        cache: bool = ...,
+    ) -> Invertible[T | None]: ...
+
+    def get_lazy_instance(self, cls, default=None, *, cache=False):  # type: ignore[no-untyped-def]
         if cache:
             return Lazy(lambda: self.get_instance(cls, default))
 
-        function = self.inject(lambda instance=default: instance)
-        function.__injected__.set_owner(cls)
-        return SimpleInvertible(function)
+        function = self.make_injected_function(lambda instance=default: instance)
+        metadata = function.__inject_metadata__
+        metadata.set_owner(cls)
+        return SimpleInvertible(metadata.call)
 
     def update[T](self, updater: Updater[T]) -> Self:
         self.__locator.update(updater)
@@ -670,6 +703,11 @@ class Module(Broker, EventListener):
 
         return self
 
+    @override
+    async def all_ready(self) -> None:
+        for broker in self.__brokers:
+            await broker.all_ready()
+
     def add_logger(self, logger: Logger) -> Self:
         self.__loggers.append(logger)
         return self
@@ -730,6 +768,13 @@ class Module(Broker, EventListener):
         return cls.from_name("__default__")
 
 
+def mod(name: str | None = None, /) -> Module:
+    if name is None:
+        return Module.default()
+
+    return Module.from_name(name)
+
+
 """
 InjectedFunction
 """
@@ -744,7 +789,13 @@ class Dependencies:
 
     def __iter__(self) -> Iterator[tuple[str, Any]]:
         for name, injectable in self.mapping.items():
-            yield name, injectable.get_instance()
+            instance = injectable.get_instance()
+            yield name, instance
+
+    async def __aiter__(self) -> AsyncIterator[tuple[str, Any]]:
+        for name, injectable in self.mapping.items():
+            instance = await injectable.aget_instance()
+            yield name, instance
 
     @property
     def are_resolved(self) -> bool:
@@ -753,9 +804,11 @@ class Dependencies:
 
         return bool(self)
 
-    @property
-    def arguments(self) -> OrderedDict[str, Any]:
-        return OrderedDict(self)
+    async def aget_arguments(self) -> dict[str, Any]:
+        return {key: value async for key, value in self}
+
+    def get_arguments(self) -> dict[str, Any]:
+        return dict(self)
 
     @classmethod
     def from_mapping(cls, mapping: Mapping[str, Injectable[Any]]) -> Self:
@@ -810,7 +863,7 @@ class Arguments(NamedTuple):
     kwargs: Mapping[str, Any]
 
 
-class Injected[**P, T](EventListener):
+class InjectMetadata[**P, T](Caller[P, T], EventListener):
     __slots__ = (
         "__dependencies",
         "__owner",
@@ -831,11 +884,6 @@ class Injected[**P, T](EventListener):
         self.__setup_queue = Queue()
         self.__wrapped = wrapped
 
-    def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        self.__setup()
-        arguments = self.bind(args, kwargs)
-        return self.wrapped(*arguments.args, **arguments.kwargs)
-
     @property
     def signature(self) -> Signature:
         with suppress(AttributeError):
@@ -851,22 +899,33 @@ class Injected[**P, T](EventListener):
     def wrapped(self) -> Callable[P, T]:
         return self.__wrapped
 
+    async def abind(
+        self,
+        args: Iterable[Any] = (),
+        kwargs: Mapping[str, Any] | None = None,
+    ) -> Arguments:
+        additional_arguments = await self.__dependencies.aget_arguments()
+        return self.__bind(args, kwargs, additional_arguments)
+
     def bind(
         self,
         args: Iterable[Any] = (),
         kwargs: Mapping[str, Any] | None = None,
     ) -> Arguments:
-        if kwargs is None:
-            kwargs = {}
+        additional_arguments = self.__dependencies.get_arguments()
+        return self.__bind(args, kwargs, additional_arguments)
 
-        if not self.__dependencies:
-            return Arguments(args, kwargs)
+    @override
+    async def acall(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
+        self.__setup()
+        arguments = await self.abind(args, kwargs)
+        return self.wrapped(*arguments.args, **arguments.kwargs)
 
-        bound = self.signature.bind_partial(*args, **kwargs)
-        bound.arguments = (
-            bound.arguments | self.__dependencies.arguments | bound.arguments
-        )
-        return Arguments(bound.args, bound.kwargs)
+    @override
+    def call(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
+        self.__setup()
+        arguments = self.bind(args, kwargs)
+        return self.wrapped(*arguments.args, **arguments.kwargs)
 
     def set_owner(self, owner: type) -> Self:
         if self.__dependencies.are_resolved:
@@ -885,8 +944,8 @@ class Injected[**P, T](EventListener):
         self.__dependencies = Dependencies.resolve(self.signature, module, self.__owner)
         return self
 
-    def on_setup[**_P, _T](self, wrapped: Callable[_P, _T] | None = None, /):  # type: ignore[no-untyped-def]
-        def decorator(wp):  # type: ignore[no-untyped-def]
+    def on_setup[**_P, _T](self, wrapped: Callable[_P, _T] | None = None, /) -> Any:
+        def decorator(wp: Callable[_P, _T]) -> Callable[_P, _T]:
             queue = self.__setup_queue
 
             if queue is None:
@@ -907,6 +966,22 @@ class Injected[**P, T](EventListener):
     def _(self, event: ModuleEvent, /) -> Iterator[None]:
         yield
         self.update(event.module)
+
+    def __bind(
+        self,
+        args: Iterable[Any],
+        kwargs: Mapping[str, Any] | None,
+        additional_arguments: dict[str, Any] | None,
+    ) -> Arguments:
+        if kwargs is None:
+            kwargs = {}
+
+        if not additional_arguments:
+            return Arguments(args, kwargs)
+
+        bound = self.signature.bind_partial(*args, **kwargs)
+        bound.arguments = bound.arguments | additional_arguments | bound.arguments
+        return Arguments(bound.args, bound.kwargs)
 
     def __close_setup_queue(self) -> None:
         self.__setup_queue = None
@@ -930,25 +1005,26 @@ class Injected[**P, T](EventListener):
         self.__close_setup_queue()
 
 
-class InjectedFunction[**P, T]:
-    __slots__ = ("__dict__", "__injected__")
+class InjectedFunction[**P, T](ABC):
+    __slots__ = ("__dict__", "__inject_metadata__")
 
-    __injected__: Injected[P, T]
+    __inject_metadata__: InjectMetadata[P, T]
 
-    def __init__(self, injected: Injected[P, T]) -> None:
-        update_wrapper(self, injected.wrapped)
-        self.__injected__ = injected
+    def __init__(self, metadata: InjectMetadata[P, T]) -> None:
+        update_wrapper(self, metadata.wrapped)
+        self.__inject_metadata__ = metadata
 
     @override
     def __repr__(self) -> str:  # pragma: no cover
-        return repr(self.__injected__.wrapped)
+        return repr(self.__inject_metadata__.wrapped)
 
     @override
     def __str__(self) -> str:  # pragma: no cover
-        return str(self.__injected__.wrapped)
+        return str(self.__inject_metadata__.wrapped)
 
+    @abstractmethod
     def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        return self.__injected__(*args, **kwargs)
+        raise NotImplementedError
 
     def __get__(
         self,
@@ -961,4 +1037,43 @@ class InjectedFunction[**P, T]:
         return MethodType(self, instance)
 
     def __set_name__(self, owner: type, name: str) -> None:
-        self.__injected__.set_owner(owner)
+        self.__inject_metadata__.set_owner(owner)
+
+
+class AsyncInjectedFunction[**P, T](InjectedFunction[P, Awaitable[T]]):
+    __slots__ = ()
+
+    @override
+    async def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
+        return await (await self.__inject_metadata__.acall(*args, **kwargs))
+
+
+class SyncInjectedFunction[**P, T](InjectedFunction[P, T]):
+    __slots__ = ()
+
+    @override
+    def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
+        return self.__inject_metadata__.call(*args, **kwargs)
+
+
+def _is_coroutine_function[**P, T](
+    function: Callable[P, T] | Callable[P, Awaitable[T]],
+) -> TypeGuard[Callable[P, Awaitable[T]]]:
+    if iscoroutinefunction(function):
+        return True
+
+    elif isclass(function):
+        return False
+
+    call = getattr(function, "__call__", None)
+    return iscoroutinefunction(call)
+
+
+def _get_caller[**P, T](function: Callable[P, T]) -> Caller[P, T]:
+    if _is_coroutine_function(function):
+        return AsyncCaller(function)
+
+    elif isinstance(function, InjectedFunction):
+        return function.__inject_metadata__
+
+    return SyncCaller(function)

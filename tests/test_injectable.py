@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import pytest
 from pydantic import BaseModel
 
-from injection import get_instance, injectable
+from injection import aget_instance, get_instance, injectable
 
 
 class TestInjectable:
@@ -24,6 +24,20 @@ class TestInjectable:
 
         instance_1 = get_instance(SomeClass)
         instance_2 = get_instance(SomeClass)
+        assert instance_1 is not instance_2
+
+    async def test_injectable_with_async_recipe(self):
+        class SomeClass: ...
+
+        @injectable
+        async def recipe() -> SomeClass:
+            return SomeClass()
+
+        with pytest.raises(RuntimeError):
+            get_instance(SomeClass)
+
+        instance_1 = await aget_instance(SomeClass)
+        instance_2 = await aget_instance(SomeClass)
         assert instance_1 is not instance_2
 
     def test_injectable_with_recipe_and_union(self):

@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable
 from types import GenericAlias
 from typing import Any, TypeAliasType
 
@@ -28,17 +28,28 @@ def Inject[T](  # noqa: N802
 
 
 class InjectionDependency[T]:
-    __slots__ = ("__call__", "__class", "__module")
+    __slots__ = ("__class", "__lazy_instance", "__module")
 
-    __call__: Callable[[], T]
     __class: type[T] | TypeAliasType | GenericAlias
+    __lazy_instance: Awaitable[T]
     __module: Module
 
-    def __init__(self, cls: type[T] | TypeAliasType | GenericAlias, module: Module):
-        lazy_instance = module.get_lazy_instance(cls, default=NotImplemented)
-        self.__call__ = lambda: self.__ensure(~lazy_instance)
+    def __init__(
+        self,
+        cls: type[T] | TypeAliasType | GenericAlias,
+        module: Module,
+    ) -> None:
         self.__class = cls
+        self.__lazy_instance = module.aget_lazy_instance(cls, default=NotImplemented)
         self.__module = module
+
+    async def __call__(self) -> T:
+        instance = await self.__lazy_instance
+
+        if instance is NotImplemented:
+            raise InjectionError(f"`{self.__class}` is an unknown dependency.")
+
+        return instance
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, type(self)):
@@ -52,9 +63,3 @@ class InjectionDependency[T]:
     @property
     def __key(self) -> tuple[type[T] | TypeAliasType | GenericAlias, Module]:
         return self.__class, self.__module
-
-    def __ensure(self, instance: T) -> T:
-        if instance is NotImplemented:
-            raise InjectionError(f"`{self.__class}` is an unknown dependency.")
-
-        return instance

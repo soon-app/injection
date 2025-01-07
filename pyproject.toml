@@ -1,11 +1,11 @@
-[tool.poetry]
+[project]
 name = "python-injection"
 version = "0.0.0"
 description = "Fast and easy dependency injection framework."
 license = "MIT"
-authors = ["remimd"]
 readme = "README.md"
-repository = "https://github.com/100nm/python-injection"
+requires-python = ">=3.12, <4"
+authors = [{ name = "remimd" }]
 keywords = ["dependencies", "dependency", "inject", "injection"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -21,17 +21,19 @@ classifiers = [
     "Natural Language :: English",
     "Typing :: Typed",
 ]
-packages = [{ include = "injection" }]
+dependencies = []
 
-[tool.poetry.dependencies]
-python = ">=3.12, <4"
+[project.urls]
+repository = "https://github.com/100nm/python-injection"
+
+[tool.poetry]
+packages = [{ include = "injection" }]
 
 [tool.poetry.group.dev.dependencies]
 mypy = "*"
 ruff = "*"
 
 [tool.poetry.group.test.dependencies]
-blacksheep = { version = "*", optional = true }
 fastapi = "*"
 httpx = "*"
 pydantic = "*"
@@ -70,7 +72,6 @@ exclude = [
     "tests/",
     "bench.py",
     "conftest.py",
-    "injection/integrations/blacksheep.py",
 ]
 follow_imports = "silent"
 no_implicit_reexport = true
@@ -85,7 +86,7 @@ warn_required_dynamic_aliases = true
 
 [tool.pytest.ini_options]
 python_files = "test_*.py"
-addopts = "--tb short --cov ./ --cov-report term-missing:skip-covered --ignore tests/integrations/test_blacksheep.py"
+addopts = "--tb short --cov ./ --cov-report term-missing:skip-covered"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_mode = "auto"
 testpaths = "**/tests/"

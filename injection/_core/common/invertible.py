@@ -13,8 +13,8 @@ class Invertible[T](Protocol):
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)
 class SimpleInvertible[T](Invertible[T]):
-    getter: Callable[..., T]
+    callable: Callable[..., T]
 
     @override
     def __invert__(self) -> T:
-        return self.getter()
+        return self.callable()

@@ -20,7 +20,6 @@ runs:
       run: |
         pip install --upgrade pip
         pip install poetry
-        poetry config installer.modern-installation true
         poetry config virtualenvs.create false
         poetry check
         poetry install --compile

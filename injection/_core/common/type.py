@@ -1,5 +1,5 @@
-from collections.abc import Awaitable, Callable, Iterable, Iterator
-from inspect import iscoroutinefunction, isfunction
+from collections.abc import Callable, Iterable, Iterator
+from inspect import isfunction
 from types import GenericAlias, UnionType
 from typing import (
     Annotated,
@@ -24,9 +24,6 @@ def get_return_types(*args: TypeInfo[Any]) -> Iterator[InputType[Any]]:
             inner_args = arg
 
         elif isfunction(arg) and (return_type := get_type_hints(arg).get("return")):
-            if iscoroutinefunction(arg):
-                return_type = Awaitable[return_type]  # type: ignore[valid-type]
-
             inner_args = (return_type,)
 
         else:

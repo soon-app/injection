@@ -49,5 +49,5 @@ def standardize_input_classes[T](
 @Locator.static_hooks.on_update
 def standardize_classes[T](*_: Any, **__: Any) -> HookGenerator[Updater[T]]:
     updater = yield
-    updater.classes = set(standardize_types(*updater.classes))
+    updater.classes = frozenset(standardize_types(*updater.classes))
     return updater
