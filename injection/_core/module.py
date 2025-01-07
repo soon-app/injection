@@ -29,6 +29,7 @@ from typing import (
     NamedTuple,
     Protocol,
     Self,
+    TypeGuard,
     overload,
     override,
     runtime_checkable,
@@ -421,13 +422,7 @@ class Module(Broker, EventListener):
         def decorator(
             wp: Callable[P, T] | Callable[P, Awaitable[T]],
         ) -> Callable[P, T] | Callable[P, Awaitable[T]]:
-            if inject:
-                factory = self.make_injected_function(wp).delegate
-            elif iscoroutinefunction(wp):
-                factory = AsyncCaller(wp)
-            else:
-                factory = SyncCaller(wp)
-
+            factory = _get_caller(self.make_injected_function(wp) if inject else wp)
             classes = get_return_types(wp, on)
             updater = Updater(
                 factory=factory,
@@ -548,7 +543,7 @@ class Module(Broker, EventListener):
     ) -> T | Default: ...
 
     @overload
-    async def aget_instance[T, _](
+    async def aget_instance[T](
         self,
         cls: InputType[T],
         default: None = ...,
@@ -568,7 +563,7 @@ class Module(Broker, EventListener):
     ) -> T | Default: ...
 
     @overload
-    def get_instance[T, _](
+    def get_instance[T](
         self,
         cls: InputType[T],
         default: None = ...,
@@ -590,7 +585,7 @@ class Module(Broker, EventListener):
     ) -> Awaitable[T | Default]: ...
 
     @overload
-    def aget_lazy_instance[T, _](
+    def aget_lazy_instance[T](
         self,
         cls: InputType[T],
         default: None = ...,
@@ -618,7 +613,7 @@ class Module(Broker, EventListener):
     ) -> Invertible[T | Default]: ...
 
     @overload
-    def get_lazy_instance[T, _](
+    def get_lazy_instance[T](
         self,
         cls: InputType[T],
         default: None = ...,
@@ -1052,10 +1047,6 @@ class AsyncInjectedFunction[**P, T](InjectedFunction[P, Awaitable[T]]):
     async def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         return await (await self.__inject_metadata__.acall(*args, **kwargs))
 
-    @property
-    def delegate(self) -> Caller[P, T]:
-        return AsyncCaller(self)
-
 
 class SyncInjectedFunction[**P, T](InjectedFunction[P, T]):
     __slots__ = ()
@@ -1064,6 +1055,25 @@ class SyncInjectedFunction[**P, T](InjectedFunction[P, T]):
     def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         return self.__inject_metadata__.call(*args, **kwargs)
 
-    @property
-    def delegate(self) -> Caller[P, T]:
-        return self.__inject_metadata__
+
+def _is_coroutine_function[**P, T](
+    function: Callable[P, T] | Callable[P, Awaitable[T]],
+) -> TypeGuard[Callable[P, Awaitable[T]]]:
+    if iscoroutinefunction(function):
+        return True
+
+    elif isclass(function):
+        return False
+
+    call = getattr(function, "__call__", None)
+    return iscoroutinefunction(call)
+
+
+def _get_caller[**P, T](function: Callable[P, T]) -> Caller[P, T]:
+    if _is_coroutine_function(function):
+        return AsyncCaller(function)
+
+    elif isinstance(function, InjectedFunction):
+        return function.__inject_metadata__
+
+    return SyncCaller(function)

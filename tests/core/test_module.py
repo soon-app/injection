@@ -37,6 +37,42 @@ class TestModule:
         assert str | None not in module
 
     """
+    all_ready
+    """
+
+    async def test_all_ready_with_success(self, module):
+        class T: ...
+
+        @module.singleton
+        async def t_recipe() -> T:
+            return T()
+
+        with pytest.raises(RuntimeError):
+            module.get_instance(T)
+
+        await module.all_ready()
+        instance = module.get_instance(T)
+        assert isinstance(instance, T)
+
+    """
+    aget_instance
+    """
+
+    async def test_aget_instance_with_success_return_instance(self, module):
+        module.set_constant(SomeClass())
+
+        instance = await module.aget_instance(SomeClass)
+        assert isinstance(instance, SomeClass)
+
+    async def test_aget_instance_with_no_injectable_return_none(self, module):
+        instance = await module.aget_instance(SomeClass)
+        assert instance is None
+
+    async def test_aget_instance_with_empty_annotated_return_none(self, module):
+        instance = await module.aget_instance(Annotated)
+        assert instance is None
+
+    """
     get_instance
     """
 
@@ -53,6 +89,36 @@ class TestModule:
     def test_get_instance_with_empty_annotated_return_none(self, module):
         instance = module.get_instance(Annotated)
         assert instance is None
+
+    """
+    aget_lazy_instance
+    """
+
+    async def test_aget_lazy_instance_with_success_return_lazy_instance(self, module):
+        @module.injectable
+        class A: ...
+
+        lazy_instance = module.aget_lazy_instance(A)
+        instance1 = await lazy_instance
+        instance2 = await lazy_instance
+        assert isinstance(instance1, A)
+        assert isinstance(instance2, A)
+        assert instance1 is not instance2
+
+    async def test_aget_lazy_instance_with_cache_return_lazy_instance(self, module):
+        @module.injectable
+        class A: ...
+
+        lazy_instance = module.aget_lazy_instance(A, cache=True)
+        instance1 = await lazy_instance
+        instance2 = await lazy_instance
+        assert isinstance(instance1, A)
+        assert isinstance(instance2, A)
+        assert instance1 is instance2
+
+    async def test_aget_lazy_instance_with_no_injectable_return_lazy_none(self, module):
+        lazy_instance = module.aget_lazy_instance(SomeClass)
+        assert await lazy_instance is None
 
     """
     get_lazy_instance

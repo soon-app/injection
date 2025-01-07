@@ -36,7 +36,7 @@ class AsyncCaller[**P, T](Caller[P, T]):
 
     @override
     def call(self, /, *args: P.args, **kwargs: P.kwargs) -> NoReturn:
-        raise TypeError(
+        raise RuntimeError(
             "Synchronous call isn't supported for an asynchronous Callable."
         )
 

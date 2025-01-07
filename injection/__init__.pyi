@@ -148,7 +148,7 @@ class Module:
         default: Default,
     ) -> T | Default: ...
     @overload
-    async def aget_instance[T, _](
+    async def aget_instance[T](
         self,
         cls: _InputType[T],
         default: None = ...,
@@ -165,7 +165,7 @@ class Module:
         """
 
     @overload
-    def get_instance[T, _](
+    def get_instance[T](
         self,
         cls: _InputType[T],
         default: None = ...,
@@ -179,7 +179,7 @@ class Module:
         cache: bool = ...,
     ) -> Awaitable[T | Default]: ...
     @overload
-    def aget_lazy_instance[T, _](
+    def aget_lazy_instance[T](
         self,
         cls: _InputType[T],
         default: None = ...,
@@ -204,7 +204,7 @@ class Module:
         """
 
     @overload
-    def get_lazy_instance[T, _](
+    def get_lazy_instance[T](
         self,
         cls: _InputType[T],
         default: None = ...,
