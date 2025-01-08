@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import (
@@ -17,7 +16,8 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import partialmethod, singledispatchmethod, update_wrapper
-from inspect import Signature, isclass, iscoroutinefunction
+from inspect import Signature, isclass, iscoroutinefunction, markcoroutinefunction
+from inspect import signature as inspect_signature
 from logging import Logger, getLogger
 from queue import Empty, Queue
 from types import MethodType
@@ -29,9 +29,7 @@ from typing import (
     NamedTuple,
     Protocol,
     Self,
-    TypeGuard,
     overload,
-    override,
     runtime_checkable,
 )
 from uuid import uuid4
@@ -76,7 +74,6 @@ class LocatorDependenciesUpdated[T](LocatorEvent):
     classes: Collection[InputType[T]]
     mode: Mode
 
-    @override
     def __str__(self) -> str:
         length = len(self.classes)
         formatted_types = ", ".join(f"`{cls}`" for cls in self.classes)
@@ -95,7 +92,6 @@ class ModuleEvent(Event, ABC):
 class ModuleEventProxy(ModuleEvent):
     event: Event
 
-    @override
     def __str__(self) -> str:
         return f"`{self.module}` has propagated an event: {self.origin}"
 
@@ -116,7 +112,6 @@ class ModuleAdded(ModuleEvent):
     module_added: Module
     priority: Priority
 
-    @override
     def __str__(self) -> str:
         return f"`{self.module}` now uses `{self.module_added}`."
 
@@ -125,7 +120,6 @@ class ModuleAdded(ModuleEvent):
 class ModuleRemoved(ModuleEvent):
     module_removed: Module
 
-    @override
     def __str__(self) -> str:
         return f"`{self.module}` no longer uses `{self.module_removed}`."
 
@@ -135,7 +129,6 @@ class ModulePriorityUpdated(ModuleEvent):
     module_updated: Module
     priority: Priority
 
-    @override
     def __str__(self) -> str:
         return (
             f"In `{self.module}`, the priority `{self.priority}` "
@@ -242,7 +235,6 @@ class Locator(Broker):
 
     static_hooks: ClassVar[LocatorHooks[Any]] = LocatorHooks.default()
 
-    @override
     def __getitem__[T](self, cls: InputType[T], /) -> Injectable[T]:
         for input_class in self.__standardize_inputs((cls,)):
             try:
@@ -254,7 +246,6 @@ class Locator(Broker):
 
         raise NoInjectable(cls)
 
-    @override
     def __contains__(self, cls: InputType[Any], /) -> bool:
         return any(
             input_class in self.__records
@@ -262,7 +253,6 @@ class Locator(Broker):
         )
 
     @property
-    @override
     def is_locked(self) -> bool:
         return any(injectable.is_locked for injectable in self.__injectables)
 
@@ -284,7 +274,6 @@ class Locator(Broker):
 
         return self
 
-    @override
     @synchronized()
     def unlock(self) -> Self:
         for injectable in self.__injectables:
@@ -292,7 +281,6 @@ class Locator(Broker):
 
         return self
 
-    @override
     async def all_ready(self) -> None:
         for injectable in self.__injectables:
             await injectable.aget_instance()
@@ -387,7 +375,6 @@ class Module(Broker, EventListener):
     def __post_init__(self) -> None:
         self.__locator.add_listener(self)
 
-    @override
     def __getitem__[T](self, cls: InputType[T], /) -> Injectable[T]:
         for broker in self.__brokers:
             with suppress(KeyError):
@@ -395,12 +382,10 @@ class Module(Broker, EventListener):
 
         raise NoInjectable(cls)
 
-    @override
     def __contains__(self, cls: InputType[Any], /) -> bool:
         return any(cls in broker for broker in self.__brokers)
 
     @property
-    @override
     def is_locked(self) -> bool:
         return any(broker.is_locked for broker in self.__brokers)
 
@@ -695,7 +680,6 @@ class Module(Broker, EventListener):
 
         return self
 
-    @override
     @synchronized()
     def unlock(self) -> Self:
         for broker in self.__brokers:
@@ -703,7 +687,6 @@ class Module(Broker, EventListener):
 
         return self
 
-    @override
     async def all_ready(self) -> None:
         for broker in self.__brokers:
             await broker.all_ready()
@@ -720,7 +703,6 @@ class Module(Broker, EventListener):
         self.__channel.remove_listener(listener)
         return self
 
-    @override
     def on_event(self, event: Event, /) -> ContextManager[None] | None:
         self_event = ModuleEventProxy(self, event)
         return self.dispatch(self_event)
@@ -890,7 +872,7 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
             return self.__signature
 
         with synchronized():
-            signature = inspect.signature(self.wrapped, eval_str=True)
+            signature = inspect_signature(self.wrapped, eval_str=True)
             self.__signature = signature
 
         return signature
@@ -915,13 +897,11 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         additional_arguments = self.__dependencies.get_arguments()
         return self.__bind(args, kwargs, additional_arguments)
 
-    @override
     async def acall(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         self.__setup()
         arguments = await self.abind(args, kwargs)
         return self.wrapped(*arguments.args, **arguments.kwargs)
 
-    @override
     def call(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         self.__setup()
         arguments = self.bind(args, kwargs)
@@ -957,7 +937,6 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         return decorator(wrapped) if wrapped else decorator
 
     @singledispatchmethod
-    @override
     def on_event(self, event: Event, /) -> ContextManager[None] | None:  # type: ignore[override]
         return None
 
@@ -1014,11 +993,9 @@ class InjectedFunction[**P, T](ABC):
         update_wrapper(self, metadata.wrapped)
         self.__inject_metadata__ = metadata
 
-    @override
     def __repr__(self) -> str:  # pragma: no cover
         return repr(self.__inject_metadata__.wrapped)
 
-    @override
     def __str__(self) -> str:  # pragma: no cover
         return str(self.__inject_metadata__.wrapped)
 
@@ -1043,7 +1020,10 @@ class InjectedFunction[**P, T](ABC):
 class AsyncInjectedFunction[**P, T](InjectedFunction[P, Awaitable[T]]):
     __slots__ = ()
 
-    @override
+    def __init__(self, metadata: InjectMetadata[P, Awaitable[T]]) -> None:
+        super().__init__(metadata)
+        markcoroutinefunction(self)
+
     async def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         return await (await self.__inject_metadata__.acall(*args, **kwargs))
 
@@ -1051,26 +1031,12 @@ class AsyncInjectedFunction[**P, T](InjectedFunction[P, Awaitable[T]]):
 class SyncInjectedFunction[**P, T](InjectedFunction[P, T]):
     __slots__ = ()
 
-    @override
     def __call__(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         return self.__inject_metadata__.call(*args, **kwargs)
 
 
-def _is_coroutine_function[**P, T](
-    function: Callable[P, T] | Callable[P, Awaitable[T]],
-) -> TypeGuard[Callable[P, Awaitable[T]]]:
-    if iscoroutinefunction(function):
-        return True
-
-    elif isclass(function):
-        return False
-
-    call = getattr(function, "__call__", None)
-    return iscoroutinefunction(call)
-
-
 def _get_caller[**P, T](function: Callable[P, T]) -> Caller[P, T]:
-    if _is_coroutine_function(function):
+    if iscoroutinefunction(function):
         return AsyncCaller(function)
 
     elif isinstance(function, InjectedFunction):

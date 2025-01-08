@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, ClassVar, NoReturn, Protocol, override, runtime_checkable
+from typing import Any, ClassVar, NoReturn, Protocol, runtime_checkable
 
 from injection._core.common.asynchronous import Caller
 from injection._core.common.threading import synchronized
@@ -37,11 +37,9 @@ class BaseInjectable[T](Injectable[T], ABC):
 class SimpleInjectable[T](BaseInjectable[T]):
     __slots__ = ()
 
-    @override
     async def aget_instance(self) -> T:
         return await self.factory.acall()
 
-    @override
     def get_instance(self) -> T:
         return self.factory.call()
 
@@ -56,15 +54,12 @@ class SingletonInjectable[T](BaseInjectable[T]):
         return self.__dict__
 
     @property
-    @override
     def is_locked(self) -> bool:
         return self.__key in self.cache
 
-    @override
     def unlock(self) -> None:
         self.cache.clear()
 
-    @override
     async def aget_instance(self) -> T:
         with suppress(KeyError):
             return self.__check_instance()
@@ -75,7 +70,6 @@ class SingletonInjectable[T](BaseInjectable[T]):
 
         return instance
 
-    @override
     def get_instance(self) -> T:
         with suppress(KeyError):
             return self.__check_instance()
@@ -97,10 +91,8 @@ class SingletonInjectable[T](BaseInjectable[T]):
 class ShouldBeInjectable[T](Injectable[T]):
     cls: type[T]
 
-    @override
     async def aget_instance(self) -> T:
         return self.get_instance()
 
-    @override
     def get_instance(self) -> NoReturn:
         raise InjectionError(f"`{self.cls}` should be an injectable.")
