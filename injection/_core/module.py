@@ -208,18 +208,20 @@ class Updater[T]:
         return Record(injectable, self.mode)
 
 
-class LocatorHooks[T](NamedTuple):
-    on_conflict: Hook[[Record[T], Record[T], InputType[T]], bool]
-    on_input: Hook[[Iterable[InputType[T]]], Iterable[InputType[T]]]
-    on_update: Hook[[Updater[T]], Updater[T]]
-
-    @classmethod
-    def default(cls) -> Self:
-        return cls(
-            on_conflict=Hook(),
-            on_input=Hook(),
-            on_update=Hook(),
-        )
+@dataclass(repr=False, eq=False, frozen=True, slots=True)
+class LocatorHooks[T]:
+    on_conflict: Hook[[Record[T], Record[T], InputType[T]], bool] = field(
+        default_factory=Hook,
+        init=False,
+    )
+    on_input: Hook[[Iterable[InputType[T]]], Iterable[InputType[T]]] = field(
+        default_factory=Hook,
+        init=False,
+    )
+    on_update: Hook[[Updater[T]], Updater[T]] = field(
+        default_factory=Hook,
+        init=False,
+    )
 
 
 @dataclass(repr=False, frozen=True, slots=True)
@@ -233,7 +235,7 @@ class Locator(Broker):
         init=False,
     )
 
-    static_hooks: ClassVar[LocatorHooks[Any]] = LocatorHooks.default()
+    static_hooks: ClassVar[LocatorHooks[Any]] = LocatorHooks()
 
     def __getitem__[T](self, cls: InputType[T], /) -> Injectable[T]:
         for input_class in self.__standardize_inputs((cls,)):
