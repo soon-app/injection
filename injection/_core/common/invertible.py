@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, override, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -15,6 +15,5 @@ class Invertible[T](Protocol):
 class SimpleInvertible[T](Invertible[T]):
     callable: Callable[..., T]
 
-    @override
     def __invert__(self) -> T:
         return self.callable()
