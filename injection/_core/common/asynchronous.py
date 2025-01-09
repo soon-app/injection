@@ -1,7 +1,8 @@
+import asyncio
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable, Generator
 from dataclasses import dataclass
-from typing import Any, NoReturn, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)
@@ -32,10 +33,16 @@ class AsyncCaller[**P, T](Caller[P, T]):
     async def acall(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         return await self.callable(*args, **kwargs)
 
-    def call(self, /, *args: P.args, **kwargs: P.kwargs) -> NoReturn:
-        raise RuntimeError(
-            "Synchronous call isn't supported for an asynchronous Callable."
-        )
+    def call(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
+        loop = asyncio.get_event_loop()
+
+        if loop.is_running():
+            raise RuntimeError(
+                "Can't call an asynchronous function in a synchronous context."
+            )
+
+        coroutine = self.callable(*args, **kwargs)
+        return loop.run_until_complete(coroutine)
 
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)

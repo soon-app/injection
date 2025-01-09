@@ -78,8 +78,8 @@ class LocatorDependenciesUpdated[T](LocatorEvent):
         length = len(self.classes)
         formatted_types = ", ".join(f"`{cls}`" for cls in self.classes)
         return (
-            f"{length} dependenc{"ies" if length > 1 else "y"} have been "
-            f"updated{f": {formatted_types}" if formatted_types else ""}."
+            f"{length} dependenc{'ies' if length > 1 else 'y'} have been "
+            f"updated{f': {formatted_types}' if formatted_types else ''}."
         )
 
 
