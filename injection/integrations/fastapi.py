@@ -2,14 +2,12 @@ from collections.abc import Awaitable
 from types import GenericAlias
 from typing import Any, TypeAliasType
 
+from fastapi import Depends
+
 from injection import Module, mod
 from injection.exceptions import InjectionError
-from injection.integrations import _is_installed
 
 __all__ = ("Inject",)
-
-if _is_installed("fastapi", __name__):
-    from fastapi import Depends
 
 
 def Inject[T](  # noqa: N802
