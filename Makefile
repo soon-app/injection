@@ -1,17 +1,14 @@
-before_commit: check lint mypy pytest
-
-check:
-	poetry check
+before_commit: lint mypy pytest
 
 install:
-	poetry install --sync
+	uv sync
 
 lint:
-	ruff format
-	ruff check --fix
+	uv run ruff format
+	uv run ruff check --fix
 
 mypy:
-	mypy ./
+	uv run mypy ./
 
 pytest:
-	pytest
+	uv run pytest

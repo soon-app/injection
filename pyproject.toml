@@ -1,8 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+bench = [
+    "tabulate",
+    "typer",
+    "types-tabulate",
+]
+dev = [
+    "hatch",
+    "mypy",
+    "ruff",
+]
+example = [
+    "argon2-cffi",
+    "faker",
+    "pydantic",
+]
+test = [
+    "fastapi",
+    "httpx",
+    "pydantic",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+]
+
 [project]
 name = "python-injection"
 version = "0.0.0"
 description = "Fast and easy dependency injection framework."
-license = "MIT"
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.12, <4"
 authors = [{ name = "remimd" }]
@@ -24,32 +53,7 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-repository = "https://github.com/100nm/python-injection"
-
-[tool.poetry]
-packages = [{ include = "injection" }]
-
-[tool.poetry.group.dev.dependencies]
-mypy = "*"
-ruff = "*"
-
-[tool.poetry.group.test.dependencies]
-fastapi = "*"
-httpx = "*"
-pydantic = "*"
-pytest = "*"
-pytest-asyncio = "*"
-pytest-cov = "*"
-
-[tool.poetry.group.example.dependencies]
-argon2-cffi = "*"
-faker = "*"
-pydantic = "*"
-
-[tool.poetry.group.bench.dependencies]
-tabulate = "*"
-typer = "*"
-types-tabulate = "*"
+Repository = "https://github.com/100nm/python-injection"
 
 [tool.coverage.report]
 exclude_lines = [
@@ -79,6 +83,15 @@ plugins = ["pydantic.mypy"]
 warn_redundant_casts = true
 warn_unused_ignores = true
 
+[tool.hatch.build]
+skip-excluded-dirs = true
+
+[tool.hatch.build.targets.sdist]
+include = ["injection"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["injection"]
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
@@ -106,6 +119,6 @@ extend-select = ["F", "I", "N"]
 ignore = ["N818"]
 fixable = ["ALL"]
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[tool.uv]
+default-groups = ["bench", "dev", "example", "test"]
+package = true
