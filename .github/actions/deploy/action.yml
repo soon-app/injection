@@ -11,5 +11,6 @@ runs:
     - name: Publish
       shell: bash
       run: |
-        poetry version ${{ inputs.version }}
-        poetry publish --build
+        uvx --from=toml-cli toml set --toml-path=pyproject.toml project.version ${{ inputs.version }}
+        uv build
+        uv publish

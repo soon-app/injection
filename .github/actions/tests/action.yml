@@ -6,4 +6,4 @@ runs:
   steps:
     - name: Pytest
       shell: bash
-      run: pytest
+      run: uv run pytest

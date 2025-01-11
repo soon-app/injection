@@ -21,4 +21,4 @@ jobs:
         with:
           version: ${{ github.event.release.tag_name }}
         env:
-          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
