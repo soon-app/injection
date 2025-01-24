@@ -43,7 +43,6 @@ from injection._core.common.asynchronous import (
 from injection._core.common.event import Event, EventChannel, EventListener
 from injection._core.common.invertible import Invertible, SimpleInvertible
 from injection._core.common.lazy import Lazy, LazyMapping
-from injection._core.common.threading import synchronized
 from injection._core.common.type import InputType, TypeInfo, get_return_types
 from injection._core.hook import Hook, apply_hooks
 from injection._core.injectables import (
@@ -198,14 +197,12 @@ class Record[T](NamedTuple):
 
 @dataclass(repr=False, eq=False, kw_only=True, slots=True)
 class Updater[T]:
-    factory: Caller[..., T]
     classes: Iterable[InputType[T]]
-    injectable_factory: InjectableFactory[T]
+    injectable: Injectable[T]
     mode: Mode
 
     def make_record(self) -> Record[T]:
-        injectable = self.injectable_factory(self.factory)
-        return Record(injectable, self.mode)
+        return Record(self.injectable, self.mode)
 
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)
@@ -262,7 +259,6 @@ class Locator(Broker):
     def __injectables(self) -> frozenset[Injectable[Any]]:
         return frozenset(record.injectable for record in self.__records.values())
 
-    @synchronized()
     def update[T](self, updater: Updater[T]) -> Self:
         updater = self.__update_preprocessing(updater)
         record = updater.make_record()
@@ -276,7 +272,6 @@ class Locator(Broker):
 
         return self
 
-    @synchronized()
     def unlock(self) -> Self:
         for injectable in self.__injectables:
             injectable.unlock()
@@ -393,7 +388,7 @@ class Module(Broker, EventListener):
 
     @property
     def __brokers(self) -> Iterator[Broker]:
-        yield from tuple(self.__modules)
+        yield from self.__modules
         yield self.__locator
 
     def injectable[**P, T](
@@ -409,12 +404,11 @@ class Module(Broker, EventListener):
         def decorator(
             wp: Callable[P, T] | Callable[P, Awaitable[T]],
         ) -> Callable[P, T] | Callable[P, Awaitable[T]]:
-            factory = _get_caller(self.make_injected_function(wp) if inject else wp)
+            factory = extract_caller(self.make_injected_function(wp) if inject else wp)
             classes = get_return_types(wp, on)
             updater = Updater(
-                factory=factory,
                 classes=classes,
-                injectable_factory=cls,
+                injectable=cls(factory),  # type: ignore[arg-type]
                 mode=Mode(mode),
             )
             self.update(updater)
@@ -427,9 +421,8 @@ class Module(Broker, EventListener):
     def should_be_injectable[T](self, wrapped: type[T] | None = None, /) -> Any:
         def decorator(wp: type[T]) -> type[T]:
             updater = Updater(
-                factory=SyncCaller(wp),
                 classes=(wp,),
-                injectable_factory=lambda _: ShouldBeInjectable(wp),
+                injectable=ShouldBeInjectable(wp),
                 mode=Mode.FALLBACK,
             )
             self.update(updater)
@@ -682,7 +675,6 @@ class Module(Broker, EventListener):
 
         return self
 
-    @synchronized()
     def unlock(self) -> Self:
         for broker in self.__brokers:
             broker.unlock()
@@ -719,7 +711,7 @@ class Module(Broker, EventListener):
             self.__debug(message)
 
     def __debug(self, message: object) -> None:
-        for logger in tuple(self.__loggers):
+        for logger in self.__loggers:
             logger.debug(message)
 
     def __check_locking(self) -> None:
@@ -741,10 +733,8 @@ class Module(Broker, EventListener):
         with suppress(KeyError):
             return cls.__instances[name]
 
-        with synchronized():
-            instance = cls(name)
-            cls.__instances[name] = instance
-
+        instance = cls(name)
+        cls.__instances[name] = instance
         return instance
 
     @classmethod
@@ -873,10 +863,8 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         with suppress(AttributeError):
             return self.__signature
 
-        with synchronized():
-            signature = inspect_signature(self.wrapped, eval_str=True)
-            self.__signature = signature
-
+        signature = inspect_signature(self.wrapped, eval_str=True)
+        self.__signature = signature
         return signature
 
     @property
@@ -921,7 +909,6 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         self.__owner = owner
         return self
 
-    @synchronized()
     def update(self, module: Module) -> Self:
         self.__dependencies = Dependencies.resolve(self.signature, module, self.__owner)
         return self
@@ -968,9 +955,7 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         self.__setup_queue = None
 
     def __setup(self) -> None:
-        queue = self.__setup_queue
-
-        if queue is None:
+        if (queue := self.__setup_queue) is None:
             return
 
         while True:
@@ -1037,7 +1022,7 @@ class SyncInjectedFunction[**P, T](InjectedFunction[P, T]):
         return self.__inject_metadata__.call(*args, **kwargs)
 
 
-def _get_caller[**P, T](function: Callable[P, T]) -> Caller[P, T]:
+def extract_caller[**P, T](function: Callable[P, T]) -> Caller[P, T]:
     if iscoroutinefunction(function):
         return AsyncCaller(function)
 

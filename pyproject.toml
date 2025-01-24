@@ -13,11 +13,6 @@ dev = [
     "mypy",
     "ruff",
 ]
-example = [
-    "argon2-cffi",
-    "faker",
-    "pydantic",
-]
 test = [
     "fastapi",
     "httpx",
@@ -72,7 +67,6 @@ disallow_any_generics = true
 disallow_subclassing_any = true
 disallow_untyped_defs = true
 exclude = [
-    "documentation/example/",
     "tests/",
     "bench.py",
     "conftest.py",
@@ -120,5 +114,5 @@ ignore = ["N818"]
 fixable = ["ALL"]
 
 [tool.uv]
-default-groups = ["bench", "dev", "example", "test"]
+default-groups = ["bench", "dev", "test"]
 package = true

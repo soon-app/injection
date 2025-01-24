@@ -5,7 +5,6 @@ from typing import Any, TypeAliasType
 from fastapi import Depends
 
 from injection import Module, mod
-from injection.exceptions import InjectionError
 
 __all__ = ("Inject",)
 
@@ -42,12 +41,7 @@ class InjectionDependency[T]:
         self.__module = module
 
     async def __call__(self) -> T:
-        instance = await self.__lazy_instance
-
-        if instance is NotImplemented:
-            raise InjectionError(f"`{self.__class}` is an unknown dependency.")
-
-        return instance
+        return await self.__lazy_instance
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, type(self)):

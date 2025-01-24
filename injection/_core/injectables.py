@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, ClassVar, NoReturn, Protocol, runtime_checkable
 
 from injection._core.common.asynchronous import Caller
-from injection._core.common.threading import synchronized
 from injection.exceptions import InjectionError
 
 
@@ -62,25 +61,21 @@ class SingletonInjectable[T](BaseInjectable[T]):
 
     async def aget_instance(self) -> T:
         with suppress(KeyError):
-            return self.__check_instance()
+            return self.__get_instance()
 
-        with synchronized():
-            instance = await self.factory.acall()
-            self.__set_instance(instance)
-
+        instance = await self.factory.acall()
+        self.__set_instance(instance)
         return instance
 
     def get_instance(self) -> T:
         with suppress(KeyError):
-            return self.__check_instance()
+            return self.__get_instance()
 
-        with synchronized():
-            instance = self.factory.call()
-            self.__set_instance(instance)
-
+        instance = self.factory.call()
+        self.__set_instance(instance)
         return instance
 
-    def __check_instance(self) -> T:
+    def __get_instance(self) -> T:
         return self.cache[self.__key]
 
     def __set_instance(self, value: T) -> None:
