@@ -3,7 +3,6 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from injection import injectable
-from injection.exceptions import InjectionError
 from injection.integrations.fastapi import Inject
 
 application = FastAPI()
@@ -13,9 +12,7 @@ application = FastAPI()
 class Dependency: ...
 
 
-def some_dependency(
-    dependency: Dependency = Inject(Dependency),
-) -> Dependency:
+def some_dependency(dependency: Dependency = Inject(Dependency)) -> Dependency:
     return dependency
 
 
@@ -28,11 +25,9 @@ async def integration_endpoint(
     assert dependency is inner_dependency
 
 
-@application.post("/integration-unknown-dependency")
-async def integration_unknown_dependency_endpoint(
-    __dependency: object = Inject(object),
-):
-    raise NotImplementedError
+@application.post("/integration-unknown-dependency", status_code=204)
+async def integration_unknown_dependency_endpoint(dependency: object = Inject(object)):
+    assert dependency is NotImplemented
 
 
 class TestFastAPIIntegration:
@@ -48,5 +43,5 @@ class TestFastAPIIntegration:
         self,
         client,
     ):
-        with pytest.raises(InjectionError):
-            client.post("/integration-unknown-dependency")
+        response = client.post("/integration-unknown-dependency")
+        assert response.status_code == 204

@@ -25,7 +25,7 @@ class EventChannel:
     @contextmanager
     def dispatch(self, event: Event) -> Iterator[None]:
         with ExitStack() as stack:
-            for listener in tuple(self.__listeners):
+            for listener in self.__listeners:
                 context_manager = listener.on_event(event)
 
                 if context_manager is None:
