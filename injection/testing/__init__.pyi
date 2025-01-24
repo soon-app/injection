@@ -1,12 +1,14 @@
 from typing import ContextManager
 
-import injection as _
+from injection import Module
 
-set_test_constant = _.set_constant
-should_be_test_injectable = _.should_be_injectable
-test_constant = _.constant
-test_injectable = _.injectable
-test_singleton = _.singleton
+__module: Module = ...
+
+set_test_constant = __module.set_constant
+should_be_test_injectable = __module.should_be_injectable
+test_constant = __module.constant
+test_injectable = __module.injectable
+test_singleton = __module.singleton
 
 def load_test_profile(*names: str) -> ContextManager[None]:
     """
