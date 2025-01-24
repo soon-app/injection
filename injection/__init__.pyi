@@ -19,27 +19,42 @@ from ._core.common.type import TypeInfo as _TypeInfo
 from ._core.module import InjectableFactory as _InjectableFactory
 from ._core.module import ModeStr, PriorityStr
 
-_: Module = ...
+__module: Module = ...
 
-afind_instance = _.afind_instance
-aget_instance = _.aget_instance
-aget_lazy_instance = _.aget_lazy_instance
-constant = _.constant
-find_instance = _.find_instance
-get_instance = _.get_instance
-get_lazy_instance = _.get_lazy_instance
-inject = _.inject
-injectable = _.injectable
-set_constant = _.set_constant
-should_be_injectable = _.should_be_injectable
-singleton = _.singleton
-
-del _
+afind_instance = __module.afind_instance
+aget_instance = __module.aget_instance
+aget_lazy_instance = __module.aget_lazy_instance
+constant = __module.constant
+find_instance = __module.find_instance
+get_instance = __module.get_instance
+get_lazy_instance = __module.get_lazy_instance
+inject = __module.inject
+injectable = __module.injectable
+set_constant = __module.set_constant
+should_be_injectable = __module.should_be_injectable
+singleton = __module.singleton
 
 def mod(name: str = ..., /) -> Module:
     """
     Short syntax for `Module.from_name`.
     """
+@runtime_checkable
+class Injectable[T](Protocol):
+    @property
+    def is_locked(self) -> bool: ...
+    def unlock(self) -> None: ...
+    @abstractmethod
+    async def aget_instance(self) -> T: ...
+    @abstractmethod
+    def get_instance(self) -> T: ...
+
+class LazyInstance[T]:
+    def __init__(self, cls: _InputType[T], module: Module = ...) -> None: ...
+    @overload
+    def __get__(self, instance: object, owner: type | None = ...) -> T: ...
+    @overload
+    def __get__(self, instance: None = ..., owner: type | None = ...) -> Self: ...
+
 @final
 class Module:
     """
@@ -276,29 +291,12 @@ class Module:
         """
 
 @final
-class Priority(Enum):
-    LOW = ...
-    HIGH = ...
-
-@runtime_checkable
-class Injectable[T](Protocol):
-    @property
-    def is_locked(self) -> bool: ...
-    def unlock(self) -> None: ...
-    @abstractmethod
-    async def aget_instance(self) -> T: ...
-    @abstractmethod
-    def get_instance(self) -> T: ...
-
-@final
 class Mode(Enum):
     FALLBACK = ...
     NORMAL = ...
     OVERRIDE = ...
 
-class LazyInstance[T]:
-    def __init__(self, cls: _InputType[T], module: Module = ...) -> None: ...
-    @overload
-    def __get__(self, instance: object, owner: type | None = ...) -> T: ...
-    @overload
-    def __get__(self, instance: None = ..., owner: type | None = ...) -> Self: ...
+@final
+class Priority(Enum):
+    LOW = ...
+    HIGH = ...
