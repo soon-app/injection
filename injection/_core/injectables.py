@@ -2,9 +2,18 @@ from abc import ABC, abstractmethod
 from collections.abc import MutableMapping
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, ClassVar, NoReturn, Protocol, runtime_checkable
+from typing import (
+    Any,
+    AsyncContextManager,
+    ClassVar,
+    ContextManager,
+    NoReturn,
+    Protocol,
+    runtime_checkable,
+)
 
 from injection._core.common.asynchronous import Caller
+from injection._core.scope import Scope, get_scope
 from injection.exceptions import InjectionError
 
 
@@ -49,37 +58,113 @@ class SingletonInjectable[T](BaseInjectable[T]):
     __key: ClassVar[str] = "$instance"
 
     @property
-    def cache(self) -> MutableMapping[str, Any]:
-        return self.__dict__
+    def is_locked(self) -> bool:
+        return self.__key in self.__cache
 
     @property
-    def is_locked(self) -> bool:
-        return self.__key in self.cache
-
-    def unlock(self) -> None:
-        self.cache.clear()
+    def __cache(self) -> MutableMapping[str, Any]:
+        return self.__dict__
 
     async def aget_instance(self) -> T:
+        cache = self.__cache
+
         with suppress(KeyError):
-            return self.__get_instance()
+            return cache[self.__key]
 
         instance = await self.factory.acall()
-        self.__set_instance(instance)
+        cache[self.__key] = instance
         return instance
 
     def get_instance(self) -> T:
+        cache = self.__cache
+
         with suppress(KeyError):
-            return self.__get_instance()
+            return cache[self.__key]
 
         instance = self.factory.call()
-        self.__set_instance(instance)
+        cache[self.__key] = instance
         return instance
 
-    def __get_instance(self) -> T:
-        return self.cache[self.__key]
+    def unlock(self) -> None:
+        self.__cache.pop(self.__key, None)
 
-    def __set_instance(self, value: T) -> None:
-        self.cache[self.__key] = value
+
+@dataclass(repr=False, eq=False, frozen=True, slots=True)
+class ScopedInjectable[R, T](Injectable[T], ABC):
+    factory: Caller[..., R]
+    scope_name: str
+
+    @property
+    def is_locked(self) -> bool:
+        scope = get_scope(self.scope_name, default=None)
+        return scope is not None and self in scope.cache
+
+    @abstractmethod
+    async def abuild(self, scope: Scope) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
+    def build(self, scope: Scope) -> T:
+        raise NotImplementedError
+
+    async def aget_instance(self) -> T:
+        scope = get_scope(self.scope_name)
+
+        with suppress(KeyError):
+            return scope.cache[self]
+
+        instance = await self.abuild(scope)
+        scope.cache[self] = instance
+        return instance
+
+    def get_instance(self) -> T:
+        scope = get_scope(self.scope_name)
+
+        with suppress(KeyError):
+            return scope.cache[self]
+
+        instance = self.build(scope)
+        scope.cache[self] = instance
+        return instance
+
+    def unlock(self) -> None:
+        if self.is_locked:
+            # TODO: Exit scope for unlock
+            raise
+
+
+class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
+    __slots__ = ()
+
+    async def abuild(self, scope: Scope) -> T:
+        cm = await self.factory.acall()
+        return await scope.aenter(cm)
+
+    def build(self, scope: Scope) -> T:
+        # TODO: Needed async context
+        raise
+
+
+class CMScopedInjectable[T](ScopedInjectable[ContextManager[T], T]):
+    __slots__ = ()
+
+    async def abuild(self, scope: Scope) -> T:
+        cm = await self.factory.acall()
+        return scope.enter(cm)
+
+    def build(self, scope: Scope) -> T:
+        cm = self.factory.call()
+        return scope.enter(cm)
+
+
+class SimpleScopedInjectable[T](ScopedInjectable[T, T]):
+    __slots__ = ()
+
+    async def abuild(self, scope: Scope) -> T:
+        return await self.factory.acall()
+
+    def build(self, scope: Scope) -> T:
+        return self.factory.call()
 
 
 @dataclass(repr=False, frozen=True, slots=True)

@@ -12,17 +12,25 @@ from collections.abc import (
     Iterator,
     Mapping,
 )
-from contextlib import contextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import partialmethod, singledispatchmethod, update_wrapper
-from inspect import Signature, isclass, iscoroutinefunction, markcoroutinefunction
+from inspect import (
+    Signature,
+    isasyncgenfunction,
+    isclass,
+    iscoroutinefunction,
+    isgeneratorfunction,
+    markcoroutinefunction,
+)
 from inspect import signature as inspect_signature
 from logging import Logger, getLogger
 from queue import Empty, Queue
 from types import MethodType
 from typing import (
     Any,
+    AsyncContextManager,
     ClassVar,
     ContextManager,
     Literal,
@@ -43,12 +51,20 @@ from injection._core.common.asynchronous import (
 from injection._core.common.event import Event, EventChannel, EventListener
 from injection._core.common.invertible import Invertible, SimpleInvertible
 from injection._core.common.lazy import Lazy, LazyMapping
-from injection._core.common.type import InputType, TypeInfo, get_return_types
+from injection._core.common.type import (
+    InputType,
+    TypeInfo,
+    get_return_types,
+    get_yield_hint,
+)
 from injection._core.hook import Hook, apply_hooks
 from injection._core.injectables import (
+    AsyncCMScopedInjectable,
+    CMScopedInjectable,
     Injectable,
     ShouldBeInjectable,
     SimpleInjectable,
+    SimpleScopedInjectable,
     SingletonInjectable,
 )
 from injection.exceptions import (
@@ -397,6 +413,7 @@ class Module(Broker, EventListener):
         /,
         *,
         cls: InjectableFactory[T] = SimpleInjectable,
+        ignore_type_hint: bool = False,
         inject: bool = True,
         on: TypeInfo[T] = (),
         mode: Mode | ModeStr = Mode.get_default(),
@@ -405,9 +422,9 @@ class Module(Broker, EventListener):
             wp: Callable[P, T] | Callable[P, Awaitable[T]],
         ) -> Callable[P, T] | Callable[P, Awaitable[T]]:
             factory = extract_caller(self.make_injected_function(wp) if inject else wp)
-            classes = get_return_types(wp, on)
+            hints = on if ignore_type_hint else (wp, on)
             updater = Updater(
-                classes=classes,
+                classes=get_return_types(hints),
                 injectable=cls(factory),  # type: ignore[arg-type]
                 mode=Mode(mode),
             )
@@ -417,6 +434,61 @@ class Module(Broker, EventListener):
         return decorator(wrapped) if wrapped else decorator
 
     singleton = partialmethod(injectable, cls=SingletonInjectable)
+
+    def scoped[**P, T](
+        self,
+        scope_name: str,
+        /,
+        *,
+        inject: bool = True,
+        on: TypeInfo[T] = (),
+        mode: Mode | ModeStr = Mode.get_default(),
+    ) -> Any:
+        def decorator(
+            wp: Callable[P, T]
+            | Callable[P, Awaitable[T]]
+            | Callable[P, Iterator[T]]
+            | Callable[P, AsyncIterator[T]],
+        ) -> (
+            Callable[P, T]
+            | Callable[P, Awaitable[T]]
+            | Callable[P, Iterator[T]]
+            | Callable[P, AsyncIterator[T]]
+        ):
+            injectable_class: Callable[[Caller[P, Any], str], Injectable[T]]
+            wrapper: (
+                Callable[P, T]
+                | Callable[P, Awaitable[T]]
+                | Callable[P, ContextManager[T]]
+                | Callable[P, AsyncContextManager[T]]
+            )
+
+            if isasyncgenfunction(wp):
+                hint = get_yield_hint(wp)
+                injectable_class = AsyncCMScopedInjectable
+                wrapper = asynccontextmanager(wp)
+
+            elif isgeneratorfunction(wp):
+                hint = get_yield_hint(wp)
+                injectable_class = CMScopedInjectable
+                wrapper = contextmanager(wp)
+
+            else:
+                injectable_class = SimpleScopedInjectable
+                hint = wrapper = wp  # type: ignore[assignment]
+
+            hints = on if hint is None else (hint, on)
+            self.injectable(
+                wrapper,
+                cls=lambda factory: injectable_class(factory, scope_name),
+                ignore_type_hint=True,
+                inject=inject,
+                on=hints,
+                mode=mode,
+            )
+            return wp
+
+        return decorator
 
     def should_be_injectable[T](self, wrapped: type[T] | None = None, /) -> Any:
         def decorator(wp: type[T]) -> type[T]:
@@ -442,6 +514,7 @@ class Module(Broker, EventListener):
             lazy_instance = Lazy(wp)
             self.injectable(
                 lambda: ~lazy_instance,
+                ignore_type_hint=True,
                 inject=False,
                 on=(wp, on),
                 mode=mode,
@@ -464,6 +537,7 @@ class Module(Broker, EventListener):
 
         self.injectable(
             lambda: instance,
+            ignore_type_hint=True,
             inject=False,
             on=on,
             mode=mode,
@@ -663,8 +737,11 @@ class Module(Broker, EventListener):
         priority: Priority | PriorityStr = Priority.get_default(),
     ) -> Iterator[None]:
         self.use(module, priority=priority)
-        yield
-        self.stop_using(module)
+
+        try:
+            yield
+        finally:
+            self.stop_using(module)
 
     def change_priority(self, module: Module, priority: Priority | PriorityStr) -> Self:
         priority = Priority(priority)
@@ -706,9 +783,11 @@ class Module(Broker, EventListener):
         self.__check_locking()
 
         with self.__channel.dispatch(event):
-            yield
-            message = str(event)
-            self.__debug(message)
+            try:
+                yield
+            finally:
+                message = str(event)
+                self.__debug(message)
 
     def __debug(self, message: object) -> None:
         for logger in self.__loggers:
@@ -1022,11 +1101,13 @@ class SyncInjectedFunction[**P, T](InjectedFunction[P, T]):
         return self.__inject_metadata__.call(*args, **kwargs)
 
 
-def extract_caller[**P, T](function: Callable[P, T]) -> Caller[P, T]:
+def extract_caller[**P, T](
+    function: Callable[P, T] | Callable[P, Awaitable[T]],
+) -> Caller[P, T]:
     if iscoroutinefunction(function):
         return AsyncCaller(function)
 
     elif isinstance(function, InjectedFunction):
         return function.__inject_metadata__
 
-    return SyncCaller(function)
+    return SyncCaller(function)  # type: ignore[arg-type]
