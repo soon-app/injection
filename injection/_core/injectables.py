@@ -13,7 +13,7 @@ from typing import (
 )
 
 from injection._core.common.asynchronous import Caller
-from injection._core.scope import Scope, get_scope
+from injection._core.scope import Scope, get_active_scopes, get_scope
 from injection.exceptions import InjectionError
 
 
@@ -96,8 +96,7 @@ class ScopedInjectable[R, T](Injectable[T], ABC):
 
     @property
     def is_locked(self) -> bool:
-        scope = get_scope(self.scope_name, default=None)
-        return scope is not None and self in scope.cache
+        return any(self in scope.cache for scope in get_active_scopes(self.scope_name))
 
     @abstractmethod
     async def abuild(self, scope: Scope) -> T:
@@ -128,9 +127,8 @@ class ScopedInjectable[R, T](Injectable[T], ABC):
         return instance
 
     def unlock(self) -> None:
-        if self.is_locked:
-            # TODO: Exit scope for unlock
-            raise
+        for scope in get_active_scopes(self.scope_name):
+            scope.cache.pop(self, None)
 
 
 class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
@@ -141,8 +139,9 @@ class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
         return await scope.aenter(cm)
 
     def build(self, scope: Scope) -> T:
-        # TODO: Needed async context
-        raise
+        raise RuntimeError(
+            "Impossible to enter an asynchronous context manager in a synchronous context."
+        )
 
 
 class CMScopedInjectable[T](ScopedInjectable[ContextManager[T], T]):

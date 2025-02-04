@@ -40,7 +40,6 @@ from typing import (
     overload,
     runtime_checkable,
 )
-from uuid import uuid4
 
 from injection._core.common.asynchronous import (
     AsyncCaller,
@@ -50,6 +49,7 @@ from injection._core.common.asynchronous import (
 )
 from injection._core.common.event import Event, EventChannel, EventListener
 from injection._core.common.invertible import Invertible, SimpleInvertible
+from injection._core.common.key import new_short_key
 from injection._core.common.lazy import Lazy, LazyMapping
 from injection._core.common.type import (
     InputType,
@@ -361,7 +361,7 @@ type PriorityStr = Literal["low", "high"]
 
 @dataclass(eq=False, frozen=True, slots=True)
 class Module(Broker, EventListener):
-    name: str = field(default_factory=lambda: f"anonymous@{uuid4().hex[:7]}")
+    name: str = field(default_factory=lambda: f"anonymous@{new_short_key()}")
     __channel: EventChannel = field(
         default_factory=EventChannel,
         init=False,
