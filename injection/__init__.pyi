@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
-from contextlib import ContextDecorator
+from contextlib import AsyncContextDecorator, ContextDecorator
 from enum import Enum
 from logging import Logger
 from types import TracebackType
@@ -319,7 +319,7 @@ class Priority(Enum):
     LOW = ...
     HIGH = ...
 
-class AsyncScope:
+class AsyncScope(AsyncContextDecorator):
     def __init__(self, name: str) -> None: ...
     async def __aenter__(self) -> Self: ...
     async def __aexit__(
@@ -329,7 +329,7 @@ class AsyncScope:
         traceback: TracebackType | None,
     ) -> Any: ...
 
-class SyncScope:
+class SyncScope(ContextDecorator):
     def __init__(self, name: str) -> None: ...
     def __enter__(self) -> Self: ...
     def __exit__(

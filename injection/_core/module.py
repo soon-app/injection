@@ -531,15 +531,12 @@ class Module(Broker, EventListener):
         alias: bool = False,
         mode: Mode | ModeStr = Mode.get_default(),
     ) -> Self:
-        if not alias:
-            cls = type(instance)
-            on = (cls, on)
-
+        hints = on if alias else (type(instance), on)
         self.injectable(
             lambda: instance,
             ignore_type_hint=True,
             inject=False,
-            on=on,
+            on=hints,
             mode=mode,
         )
         return self
