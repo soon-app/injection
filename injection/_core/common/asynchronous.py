@@ -1,8 +1,17 @@
 import asyncio
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable, Generator
+from collections.abc import Awaitable, Callable, Coroutine, Generator
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+
+
+def run_sync[T](coroutine: Coroutine[Any, Any, T]) -> T:
+    loop = asyncio.get_event_loop()
+
+    try:
+        return loop.run_until_complete(coroutine)
+    finally:
+        coroutine.close()
 
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)
@@ -28,21 +37,13 @@ class Caller[**P, T](Protocol):
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)
 class AsyncCaller[**P, T](Caller[P, T]):
-    callable: Callable[P, Awaitable[T]]
+    callable: Callable[P, Coroutine[Any, Any, T]]
 
     async def acall(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
         return await self.callable(*args, **kwargs)
 
     def call(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        loop = asyncio.get_event_loop()
-
-        if loop.is_running():
-            raise RuntimeError(
-                "Can't call an asynchronous function in a synchronous context."
-            )
-
-        coroutine = self.callable(*args, **kwargs)
-        return loop.run_until_complete(coroutine)
+        return run_sync(self.callable(*args, **kwargs))
 
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)

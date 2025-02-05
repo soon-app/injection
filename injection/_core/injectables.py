@@ -12,7 +12,7 @@ from typing import (
     runtime_checkable,
 )
 
-from injection._core.common.asynchronous import Caller
+from injection._core.common.asynchronous import Caller, run_sync
 from injection._core.scope import Scope, get_active_scopes, get_scope
 from injection.exceptions import InjectionError
 
@@ -139,9 +139,7 @@ class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
         return await scope.aenter(cm)
 
     def build(self, scope: Scope) -> T:
-        raise RuntimeError(
-            "Impossible to enter an asynchronous context manager in a synchronous context."
-        )
+        return run_sync(self.abuild(scope))
 
 
 class CMScopedInjectable[T](ScopedInjectable[ContextManager[T], T]):
