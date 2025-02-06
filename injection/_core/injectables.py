@@ -127,8 +127,8 @@ class ScopedInjectable[R, T](Injectable[T], ABC):
         return instance
 
     def unlock(self) -> None:
-        for scope in get_active_scopes(self.scope_name):
-            scope.cache.pop(self, None)
+        if self.is_locked:
+            raise RuntimeError(f"To unlock, close the `{self.scope_name}` scope.")
 
 
 class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
@@ -162,6 +162,10 @@ class SimpleScopedInjectable[T](ScopedInjectable[T, T]):
 
     def build(self, scope: Scope) -> T:
         return self.factory.call()
+
+    def unlock(self) -> None:
+        for scope in get_active_scopes(self.scope_name):
+            scope.cache.pop(self, None)
 
 
 @dataclass(repr=False, frozen=True, slots=True)
