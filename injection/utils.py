@@ -42,12 +42,17 @@ def load_modules_with_keywords(
     """
     Function to import modules from a Python package if one of the keywords is contained in the Python script.
     The default keywords are:
-        - `from injection`
+        - `from injection `
+        - `from injection.`
         - `import injection`
     """
 
     if keywords is None:
-        keywords = f"from {injection_package_name}", f"import {injection_package_name}"
+        keywords = (
+            f"from {injection_package_name} ",
+            f"from {injection_package_name}.",
+            f"import {injection_package_name}",
+        )
 
     b_keywords = tuple(keyword.encode() for keyword in keywords)
 

@@ -13,45 +13,26 @@ def Inject[T](  # noqa: N802
     cls: type[T] | TypeAliasType | GenericAlias,
     /,
     module: Module | None = None,
-    *,
-    scoped: bool = True,
 ) -> Any:
     """
     Declare a FastAPI dependency with `python-injection`.
     """
 
     dependency: InjectionDependency[T] = InjectionDependency(cls, module or mod())
-    return Depends(dependency, use_cache=scoped)
+    return Depends(dependency, use_cache=False)
 
 
 class InjectionDependency[T]:
-    __slots__ = ("__class", "__lazy_instance", "__module")
+    __slots__ = ("__awaitable",)
 
-    __class: type[T] | TypeAliasType | GenericAlias
-    __lazy_instance: Awaitable[T]
-    __module: Module
+    __awaitable: Awaitable[T]
 
     def __init__(
         self,
         cls: type[T] | TypeAliasType | GenericAlias,
         module: Module,
     ) -> None:
-        self.__class = cls
-        self.__lazy_instance = module.aget_lazy_instance(cls, default=NotImplemented)
-        self.__module = module
+        self.__awaitable = module.aget_lazy_instance(cls, default=NotImplemented)
 
     async def __call__(self) -> T:
-        return await self.__lazy_instance
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, type(self)):
-            return self.__key == other.__key
-
-        return NotImplemented
-
-    def __hash__(self) -> int:
-        return hash(self.__key)
-
-    @property
-    def __key(self) -> tuple[type[T] | TypeAliasType | GenericAlias, Module]:
-        return self.__class, self.__module
+        return await self.__awaitable

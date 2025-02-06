@@ -1,11 +1,13 @@
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
-from contextlib import ContextDecorator
+from contextlib import AsyncContextDecorator, ContextDecorator
 from enum import Enum
 from logging import Logger
+from types import TracebackType
 from typing import (
     Any,
     ContextManager,
+    Final,
     Protocol,
     Self,
     final,
@@ -19,20 +21,21 @@ from ._core.common.type import TypeInfo as _TypeInfo
 from ._core.module import InjectableFactory as _InjectableFactory
 from ._core.module import ModeStr, PriorityStr
 
-__module: Module = ...
+__MODULE: Final[Module] = ...
 
-afind_instance = __module.afind_instance
-aget_instance = __module.aget_instance
-aget_lazy_instance = __module.aget_lazy_instance
-constant = __module.constant
-find_instance = __module.find_instance
-get_instance = __module.get_instance
-get_lazy_instance = __module.get_lazy_instance
-inject = __module.inject
-injectable = __module.injectable
-set_constant = __module.set_constant
-should_be_injectable = __module.should_be_injectable
-singleton = __module.singleton
+afind_instance = __MODULE.afind_instance
+aget_instance = __MODULE.aget_instance
+aget_lazy_instance = __MODULE.aget_lazy_instance
+constant = __MODULE.constant
+find_instance = __MODULE.find_instance
+get_instance = __MODULE.get_instance
+get_lazy_instance = __MODULE.get_lazy_instance
+inject = __MODULE.inject
+injectable = __MODULE.injectable
+scoped = __MODULE.scoped
+set_constant = __MODULE.set_constant
+should_be_injectable = __MODULE.should_be_injectable
+singleton = __MODULE.singleton
 
 def mod(name: str = ..., /) -> Module:
     """
@@ -107,6 +110,21 @@ class Module:
         Decorator applicable to a class or function. It is used to indicate how the
         singleton will be constructed. At injection time, the injected instance will
         always be the same.
+        """
+
+    def scoped[**P, T](
+        self,
+        scope_name: str,
+        /,
+        *,
+        inject: bool = ...,
+        on: _TypeInfo[T] = (),
+        mode: Mode | ModeStr = ...,
+    ) -> Any:
+        """
+        Decorator applicable to a class or function or generator function. It is used
+        to indicate how the scoped instance will be constructed. At injection time, the
+        injected instance is retrieved from the scope.
         """
 
     def should_be_injectable[T](self, wrapped: type[T] = ..., /) -> Any:
@@ -300,3 +318,23 @@ class Mode(Enum):
 class Priority(Enum):
     LOW = ...
     HIGH = ...
+
+class AsyncScope(AsyncContextDecorator):
+    def __init__(self, name: str) -> None: ...
+    async def __aenter__(self) -> Self: ...
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Any: ...
+
+class SyncScope(ContextDecorator):
+    def __init__(self, name: str) -> None: ...
+    def __enter__(self) -> Self: ...
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Any: ...

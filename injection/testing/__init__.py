@@ -9,6 +9,7 @@ __all__ = (
     "should_be_test_injectable",
     "test_constant",
     "test_injectable",
+    "test_scoped",
     "test_singleton",
 )
 
@@ -18,6 +19,7 @@ set_test_constant = mod(_TEST_PROFILE_NAME).set_constant
 should_be_test_injectable = mod(_TEST_PROFILE_NAME).should_be_injectable
 test_constant = mod(_TEST_PROFILE_NAME).constant
 test_injectable = mod(_TEST_PROFILE_NAME).injectable
+test_scoped = mod(_TEST_PROFILE_NAME).scoped
 test_singleton = mod(_TEST_PROFILE_NAME).singleton
 
 
