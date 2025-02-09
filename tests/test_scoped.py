@@ -3,12 +3,12 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 
 from injection import (
-    AsyncScope,
-    SyncScope,
     afind_instance,
+    async_scope,
     find_instance,
     injectable,
     scoped,
+    sync_scope,
 )
 from injection.exceptions import ScopeError, ScopeUndefinedError
 
@@ -18,7 +18,7 @@ class TestScoped:
         @scoped("test")
         class SomeInjectable: ...
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             instance_1 = find_instance(SomeInjectable)
             instance_2 = find_instance(SomeInjectable)
 
@@ -30,7 +30,7 @@ class TestScoped:
         @scoped("test", on=A)
         class B(A): ...
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             a = find_instance(A)
             b = find_instance(B)
 
@@ -44,7 +44,7 @@ class TestScoped:
         @scoped("test", on=(A, B))
         class C(B): ...
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             a = find_instance(A)
             b = find_instance(B)
             c = find_instance(C)
@@ -76,7 +76,7 @@ class TestScoped:
         @scoped("test", on=A, mode="override")
         class B(A): ...
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             a = find_instance(A)
 
         assert isinstance(a, B)
@@ -91,7 +91,7 @@ class TestScoped:
         @scoped("test", on=A, mode="override")
         class C(B): ...
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             a = find_instance(A)
 
         assert isinstance(a, C)
@@ -103,7 +103,7 @@ class TestScoped:
         def some_injectable_recipe() -> SomeInjectable:
             return SomeInjectable()
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             instance_1 = find_instance(SomeInjectable)
             instance_2 = find_instance(SomeInjectable)
 
@@ -116,7 +116,7 @@ class TestScoped:
         async def some_injectable_recipe() -> SomeInjectable:
             return SomeInjectable()
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             instance_1 = await afind_instance(SomeInjectable)
             instance_2 = await afind_instance(SomeInjectable)
 
@@ -129,7 +129,7 @@ class TestScoped:
         def some_injectable_recipe() -> Iterator[SomeInjectable]:
             yield SomeInjectable()
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             instance_1 = find_instance(SomeInjectable)
             instance_2 = find_instance(SomeInjectable)
 
@@ -142,7 +142,7 @@ class TestScoped:
         def some_injectable_recipe() -> Iterator[SomeInjectable]:
             yield SomeInjectable()
 
-        async with AsyncScope("test"):
+        async with async_scope("test"):
             instance_1 = find_instance(SomeInjectable)
             instance_2 = find_instance(SomeInjectable)
 
@@ -157,7 +157,7 @@ class TestScoped:
         async def some_injectable_recipe() -> AsyncIterator[SomeInjectable]:
             yield SomeInjectable()  # pragma: no cover
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             with pytest.raises(ScopeError):
                 await afind_instance(SomeInjectable)
 
@@ -168,7 +168,7 @@ class TestScoped:
         async def some_injectable_recipe() -> AsyncIterator[SomeInjectable]:
             yield SomeInjectable()
 
-        async with AsyncScope("test"):
+        async with async_scope("test"):
             instance_1 = await afind_instance(SomeInjectable)
             instance_2 = await afind_instance(SomeInjectable)
 

@@ -2,7 +2,7 @@ from typing import Annotated
 
 import pytest
 
-from injection import Module, SyncScope
+from injection import Module, sync_scope
 from injection.exceptions import (
     ModuleError,
     ModuleLockError,
@@ -346,7 +346,7 @@ class TestModule:
 
         assert module.is_locked is False
 
-        with SyncScope("test"):
+        with sync_scope("test"):
             instance_1 = module.get_instance(Dependency)
             assert module.is_locked is True
 

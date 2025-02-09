@@ -1,19 +1,18 @@
 from ._core.descriptors import LazyInstance
 from ._core.injectables import Injectable
 from ._core.module import Mode, Module, Priority, mod
-from ._core.scope import AsyncScope, SyncScope
+from ._core.scope import async_scope, sync_scope
 
 __all__ = (
-    "AsyncScope",
     "Injectable",
     "LazyInstance",
     "Mode",
     "Module",
     "Priority",
-    "SyncScope",
     "afind_instance",
     "aget_instance",
     "aget_lazy_instance",
+    "async_scope",
     "constant",
     "find_instance",
     "get_instance",
@@ -25,6 +24,7 @@ __all__ = (
     "set_constant",
     "should_be_injectable",
     "singleton",
+    "sync_scope",
 )
 
 afind_instance = mod().afind_instance

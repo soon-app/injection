@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Iterator, MutableMapping
+from collections.abc import AsyncIterator, Iterator, MutableMapping
 from contextlib import (
     AsyncContextDecorator,
     AsyncExitStack,
     ContextDecorator,
     ExitStack,
+    asynccontextmanager,
     contextmanager,
 )
 from contextvars import ContextVar
@@ -31,59 +32,111 @@ from injection.exceptions import (
 )
 
 
-@dataclass(repr=False, frozen=True, slots=True)
-class _ActiveScope:
+@dataclass(repr=False, slots=True)
+class _ScopeState:
     # Shouldn't be instantiated outside `__SCOPES`.
 
-    context_var: ContextVar[Scope] = field(
+    __context_var: ContextVar[Scope] = field(
         default_factory=lambda: ContextVar(f"scope@{new_short_key()}"),
         init=False,
     )
-    references: set[Scope] = field(
+    __references: set[Scope] = field(
         default_factory=set,
         init=False,
     )
+    __shared_value: Scope | None = field(
+        default=None,
+        init=False,
+    )
 
-    def to_tuple(self) -> tuple[ContextVar[Scope], set[Scope]]:
-        return self.context_var, self.references
+    @contextmanager
+    def bind_contextual_scope(self, scope: Scope) -> Iterator[None]:
+        self.__references.add(scope)
+        token = self.__context_var.set(scope)
+
+        try:
+            yield
+        finally:
+            self.__context_var.reset(token)
+            self.__references.remove(scope)
+
+    @contextmanager
+    def bind_shared_scope(self, scope: Scope) -> Iterator[None]:
+        if self.__references:
+            raise ScopeError(
+                "A shared scope can't be defined when one or more contextual scopes "
+                "are defined on the same name."
+            )
+
+        self.__shared_value = scope
+
+        try:
+            yield
+        finally:
+            self.__shared_value = None
+
+    def get_scope(self) -> Scope | None:
+        return self.__context_var.get(self.__shared_value)
+
+    def get_active_scopes(self) -> tuple[Scope, ...]:
+        references = self.__references
+
+        if shared_value := self.__shared_value:
+            return shared_value, *references
+
+        return tuple(references)
 
 
-__SCOPES: Final[defaultdict[str, _ActiveScope]] = defaultdict(_ActiveScope)
+__SCOPES: Final[defaultdict[str, _ScopeState]] = defaultdict(_ScopeState)
+
+
+@asynccontextmanager
+async def async_scope(name: str, *, shared: bool = False) -> AsyncIterator[None]:
+    async with AsyncScope() as scope:
+        scope.enter(_bind_scope(name, scope, shared))
+        yield
 
 
 @contextmanager
-def bind_scope(name: str, value: Scope) -> Iterator[None]:
-    context_var, references = __SCOPES[name].to_tuple()
+def sync_scope(name: str, *, shared: bool = False) -> Iterator[None]:
+    with SyncScope() as scope:
+        scope.enter(_bind_scope(name, scope, shared))
+        yield
 
-    if context_var.get(None):
+
+def get_active_scopes(name: str) -> tuple[Scope, ...]:
+    return __SCOPES[name].get_active_scopes()
+
+
+def get_scope(name: str) -> Scope:
+    scope = __SCOPES[name].get_scope()
+
+    if scope is None:
+        raise ScopeUndefinedError(
+            f"Scope `{name}` isn't defined in the current context."
+        )
+
+    return scope
+
+
+@contextmanager
+def _bind_scope(name: str, value: Scope, shared: bool) -> Iterator[None]:
+    state = __SCOPES[name]
+
+    if state.get_scope():
         raise ScopeAlreadyDefinedError(
             f"Scope `{name}` is already defined in the current context."
         )
 
-    references.add(value)
-    token = context_var.set(value)
+    strategy = (
+        state.bind_shared_scope(value) if shared else state.bind_contextual_scope(value)
+    )
 
     try:
-        yield
+        with strategy:
+            yield
     finally:
-        context_var.reset(token)
-        references.discard(value)
         value.cache.clear()
-
-
-def get_active_scopes(name: str) -> tuple[Scope, ...]:
-    return tuple(__SCOPES[name].references)
-
-
-def get_scope(name: str) -> Scope:
-    context_var = __SCOPES[name].context_var
-
-    try:
-        return context_var.get()
-    except LookupError as exc:
-        raise ScopeUndefinedError(
-            f"Scope `{name}` isn't defined in the current context."
-        ) from exc
 
 
 @runtime_checkable
@@ -102,22 +155,23 @@ class Scope(Protocol):
 
 
 @dataclass(repr=False, frozen=True, slots=True)
-class AsyncScope(AsyncContextDecorator, Scope):
-    name: str
+class BaseScope[T](Scope, ABC):
+    delegate: T
     cache: MutableMapping[Any, Any] = field(
         default_factory=dict,
         init=False,
         hash=False,
     )
-    __exit_stack: AsyncExitStack = field(
-        default_factory=AsyncExitStack,
-        init=False,
-    )
+
+
+class AsyncScope(AsyncContextDecorator, BaseScope[AsyncExitStack]):
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__(delegate=AsyncExitStack())
 
     async def __aenter__(self) -> Self:
-        await self.__exit_stack.__aenter__()
-        lifespan = bind_scope(self.name, self)
-        self.enter(lifespan)
+        await self.delegate.__aenter__()
         return self
 
     async def __aexit__(
@@ -126,32 +180,23 @@ class AsyncScope(AsyncContextDecorator, Scope):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> Any:
-        return await self.__exit_stack.__aexit__(exc_type, exc_value, traceback)
+        return await self.delegate.__aexit__(exc_type, exc_value, traceback)
 
     async def aenter[T](self, context_manager: AsyncContextManager[T]) -> T:
-        return await self.__exit_stack.enter_async_context(context_manager)
+        return await self.delegate.enter_async_context(context_manager)
 
     def enter[T](self, context_manager: ContextManager[T]) -> T:
-        return self.__exit_stack.enter_context(context_manager)
+        return self.delegate.enter_context(context_manager)
 
 
-@dataclass(repr=False, frozen=True, slots=True)
-class SyncScope(ContextDecorator, Scope):
-    name: str
-    cache: MutableMapping[Any, Any] = field(
-        default_factory=dict,
-        init=False,
-        hash=False,
-    )
-    __exit_stack: ExitStack = field(
-        default_factory=ExitStack,
-        init=False,
-    )
+class SyncScope(ContextDecorator, BaseScope[ExitStack]):
+    __slots__ = ()
+
+    def __init__(self) -> None:
+        super().__init__(delegate=ExitStack())
 
     def __enter__(self) -> Self:
-        self.__exit_stack.__enter__()
-        lifespan = bind_scope(self.name, self)
-        self.enter(lifespan)
+        self.delegate.__enter__()
         return self
 
     def __exit__(
@@ -160,10 +205,10 @@ class SyncScope(ContextDecorator, Scope):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> Any:
-        return self.__exit_stack.__exit__(exc_type, exc_value, traceback)
+        return self.delegate.__exit__(exc_type, exc_value, traceback)
 
     async def aenter[T](self, context_manager: AsyncContextManager[T]) -> T:
         raise ScopeError("SyncScope doesn't support asynchronous context manager.")
 
     def enter[T](self, context_manager: ContextManager[T]) -> T:
-        return self.__exit_stack.enter_context(context_manager)
+        return self.delegate.enter_context(context_manager)

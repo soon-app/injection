@@ -1,11 +1,11 @@
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
-from contextlib import AsyncContextDecorator, ContextDecorator
+from contextlib import ContextDecorator
 from enum import Enum
 from logging import Logger
-from types import TracebackType
 from typing import (
     Any,
+    AsyncContextManager,
     ContextManager,
     Final,
     Protocol,
@@ -37,6 +37,8 @@ set_constant = __MODULE.set_constant
 should_be_injectable = __MODULE.should_be_injectable
 singleton = __MODULE.singleton
 
+def async_scope(name: str, *, shared: bool = ...) -> AsyncContextManager[None]: ...
+def sync_scope(name: str, *, shared: bool = ...) -> ContextManager[None]: ...
 def mod(name: str = ..., /) -> Module:
     """
     Short syntax for `Module.from_name`.
@@ -318,23 +320,3 @@ class Mode(Enum):
 class Priority(Enum):
     LOW = ...
     HIGH = ...
-
-class AsyncScope(AsyncContextDecorator):
-    def __init__(self, name: str) -> None: ...
-    async def __aenter__(self) -> Self: ...
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> Any: ...
-
-class SyncScope(ContextDecorator):
-    def __init__(self, name: str) -> None: ...
-    def __enter__(self) -> Self: ...
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_value: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> Any: ...
