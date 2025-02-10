@@ -49,6 +49,13 @@ class _ScopeState:
         init=False,
     )
 
+    @property
+    def active_scopes(self) -> Iterator[Scope]:
+        yield from self.__references
+
+        if shared_value := self.__shared_value:
+            yield shared_value
+
     @contextmanager
     def bind_contextual_scope(self, scope: Scope) -> Iterator[None]:
         self.__references.add(scope)
@@ -78,14 +85,6 @@ class _ScopeState:
     def get_scope(self) -> Scope | None:
         return self.__context_var.get(self.__shared_value)
 
-    def get_active_scopes(self) -> tuple[Scope, ...]:
-        references = self.__references
-
-        if shared_value := self.__shared_value:
-            return shared_value, *references
-
-        return tuple(references)
-
 
 __SCOPES: Final[defaultdict[str, _ScopeState]] = defaultdict(_ScopeState)
 
@@ -105,7 +104,7 @@ def define_scope(name: str, *, shared: bool = False) -> Iterator[None]:
 
 
 def get_active_scopes(name: str) -> tuple[Scope, ...]:
-    return __SCOPES[name].get_active_scopes()
+    return tuple(__SCOPES[name].active_scopes)
 
 
 def get_scope(name: str) -> Scope:
