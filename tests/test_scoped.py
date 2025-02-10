@@ -143,7 +143,7 @@ class TestScoped:
             yield SomeInjectable()
 
         async with adefine_scope("test"):
-            instance_1 = find_instance(SomeInjectable)
+            instance_1 = await afind_instance(SomeInjectable)
             instance_2 = find_instance(SomeInjectable)
 
         assert instance_1 is instance_2

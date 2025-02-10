@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import Annotated
 
 import pytest
@@ -358,3 +359,16 @@ class TestModule:
 
         assert instance_1 is not instance_2
         assert module.is_locked is False
+
+    def test_unlock_with_scoped_cm_recipe(self, module):
+        class Dependency: ...
+
+        @module.scoped("test")
+        def dependency_recipe() -> Iterator[Dependency]:
+            yield Dependency()
+
+        with define_scope("test"):
+            module.get_instance(Dependency)
+
+            with pytest.raises(RuntimeError):
+                module.unlock()

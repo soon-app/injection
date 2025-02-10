@@ -12,6 +12,7 @@ The scoped dependencies were created for two reasons:
 ## Scope
 
 The scope is responsible for instance persistence and for cleaning up when it closes.
+
 There are two kinds of scopes:
 * **Contextual**: All threads have access to a different scope (based on [contextvars](https://docs.python.org/3.13/library/contextvars.html)).
 * **Shared**: All threads have access to the same scope.
