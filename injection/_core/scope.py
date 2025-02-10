@@ -62,7 +62,7 @@ class _ScopeState:
 
     @contextmanager
     def bind_shared_scope(self, scope: Scope) -> Iterator[None]:
-        if self.__references:
+        if self.get_active_scopes():
             raise ScopeError(
                 "A shared scope can't be defined when one or more contextual scopes "
                 "are defined on the same name."
@@ -91,14 +91,14 @@ __SCOPES: Final[defaultdict[str, _ScopeState]] = defaultdict(_ScopeState)
 
 
 @asynccontextmanager
-async def async_scope(name: str, *, shared: bool = False) -> AsyncIterator[None]:
+async def adefine_scope(name: str, *, shared: bool = False) -> AsyncIterator[None]:
     async with AsyncScope() as scope:
         scope.enter(_bind_scope(name, scope, shared))
         yield
 
 
 @contextmanager
-def sync_scope(name: str, *, shared: bool = False) -> Iterator[None]:
+def define_scope(name: str, *, shared: bool = False) -> Iterator[None]:
     with SyncScope() as scope:
         scope.enter(_bind_scope(name, scope, shared))
         yield
@@ -120,7 +120,7 @@ def get_scope(name: str) -> Scope:
 
 
 @contextmanager
-def _bind_scope(name: str, value: Scope, shared: bool) -> Iterator[None]:
+def _bind_scope(name: str, scope: Scope, shared: bool) -> Iterator[None]:
     state = __SCOPES[name]
 
     if state.get_scope():
@@ -129,14 +129,14 @@ def _bind_scope(name: str, value: Scope, shared: bool) -> Iterator[None]:
         )
 
     strategy = (
-        state.bind_shared_scope(value) if shared else state.bind_contextual_scope(value)
+        state.bind_shared_scope(scope) if shared else state.bind_contextual_scope(scope)
     )
 
     try:
         with strategy:
             yield
     finally:
-        value.cache.clear()
+        scope.cache.clear()
 
 
 @runtime_checkable
@@ -208,7 +208,9 @@ class SyncScope(ContextDecorator, BaseScope[ExitStack]):
         return self.delegate.__exit__(exc_type, exc_value, traceback)
 
     async def aenter[T](self, context_manager: AsyncContextManager[T]) -> T:
-        raise ScopeError("SyncScope doesn't support asynchronous context manager.")
+        raise ScopeError(
+            "Synchronous scope doesn't support asynchronous context manager."
+        )
 
     def enter[T](self, context_manager: ContextManager[T]) -> T:
         return self.delegate.enter_context(context_manager)

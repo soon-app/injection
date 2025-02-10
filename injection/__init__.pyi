@@ -1,19 +1,9 @@
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable
-from contextlib import ContextDecorator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from enum import Enum
 from logging import Logger
-from typing import (
-    Any,
-    AsyncContextManager,
-    ContextManager,
-    Final,
-    Protocol,
-    Self,
-    final,
-    overload,
-    runtime_checkable,
-)
+from typing import Any, Final, Protocol, Self, final, overload, runtime_checkable
 
 from ._core.common.invertible import Invertible as _Invertible
 from ._core.common.type import InputType as _InputType
@@ -37,8 +27,10 @@ set_constant = __MODULE.set_constant
 should_be_injectable = __MODULE.should_be_injectable
 singleton = __MODULE.singleton
 
-def async_scope(name: str, *, shared: bool = ...) -> AsyncContextManager[None]: ...
-def sync_scope(name: str, *, shared: bool = ...) -> ContextManager[None]: ...
+@asynccontextmanager
+def adefine_scope(name: str, *, shared: bool = ...) -> AsyncIterator[None]: ...
+@contextmanager
+def define_scope(name: str, *, shared: bool = ...) -> Iterator[None]: ...
 def mod(name: str = ..., /) -> Module:
     """
     Short syntax for `Module.from_name`.
@@ -268,12 +260,13 @@ class Module:
         Function to remove a module in use.
         """
 
+    @contextmanager
     def use_temporarily(
         self,
         module: Module,
         *,
         priority: Priority | PriorityStr = ...,
-    ) -> ContextManager[None] | ContextDecorator:
+    ) -> Iterator[None]:
         """
         Context manager or decorator for temporary use of a module.
         """
