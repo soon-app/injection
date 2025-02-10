@@ -4,8 +4,10 @@ The scoped dependencies were created for two reasons:
 * To have dependencies that have a defined lifespan.
 * To be able to open and close things in a dependency recipe.
 
-> **Best practices:**
-> * Avoid making a singleton dependent on a scoped dependency.
+## Best practices
+
+* Avoid making a singleton dependent on a scoped dependency.
+* Define scope names in a `StrEnum`.
 
 ## Scope
 
@@ -32,7 +34,6 @@ async def main() -> None:
 
 ```python
 from injection import define_scope
-
 
 def main() -> None:
     with define_scope("<scope-name>", shared=True):

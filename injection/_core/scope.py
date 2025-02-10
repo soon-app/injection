@@ -69,7 +69,7 @@ class _ScopeState:
 
     @contextmanager
     def bind_shared_scope(self, scope: Scope) -> Iterator[None]:
-        if self.get_active_scopes():
+        if next(self.active_scopes, None):
             raise ScopeError(
                 "A shared scope can't be defined when one or more contextual scopes "
                 "are defined on the same name."
