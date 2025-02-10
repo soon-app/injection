@@ -7,6 +7,9 @@ __all__ = (
     "ModuleLockError",
     "ModuleNotUsedError",
     "NoInjectable",
+    "ScopeAlreadyDefinedError",
+    "ScopeError",
+    "ScopeUndefinedError",
 )
 
 
@@ -34,6 +37,15 @@ class ModuleLockError(ModuleError): ...
 
 
 class ModuleNotUsedError(KeyError, ModuleError): ...
+
+
+class ScopeError(InjectionError): ...
+
+
+class ScopeUndefinedError(LookupError, ScopeError): ...
+
+
+class ScopeAlreadyDefinedError(ScopeError): ...
 
 
 class HookError(InjectionError): ...

@@ -56,6 +56,7 @@ if __name__ == "__main__":
 ## Resources
 
 * [**Basic usage**](https://github.com/100nm/python-injection/tree/prod/documentation/basic-usage.md)
+* [**Scoped dependencies**](https://github.com/100nm/python-injection/tree/prod/documentation/scoped-dependencies.md)
 * [**Testing**](https://github.com/100nm/python-injection/tree/prod/documentation/testing.md)
 * [**Advanced usage**](https://github.com/100nm/python-injection/tree/prod/documentation/advanced-usage.md)
 * [**Utils**](https://github.com/100nm/python-injection/tree/prod/documentation/utils.md)

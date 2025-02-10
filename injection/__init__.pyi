@@ -1,17 +1,9 @@
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable
-from contextlib import ContextDecorator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from enum import Enum
 from logging import Logger
-from typing import (
-    Any,
-    ContextManager,
-    Protocol,
-    Self,
-    final,
-    overload,
-    runtime_checkable,
-)
+from typing import Any, Final, Protocol, Self, final, overload, runtime_checkable
 
 from ._core.common.invertible import Invertible as _Invertible
 from ._core.common.type import InputType as _InputType
@@ -19,21 +11,26 @@ from ._core.common.type import TypeInfo as _TypeInfo
 from ._core.module import InjectableFactory as _InjectableFactory
 from ._core.module import ModeStr, PriorityStr
 
-__module: Module = ...
+__MODULE: Final[Module] = ...
 
-afind_instance = __module.afind_instance
-aget_instance = __module.aget_instance
-aget_lazy_instance = __module.aget_lazy_instance
-constant = __module.constant
-find_instance = __module.find_instance
-get_instance = __module.get_instance
-get_lazy_instance = __module.get_lazy_instance
-inject = __module.inject
-injectable = __module.injectable
-set_constant = __module.set_constant
-should_be_injectable = __module.should_be_injectable
-singleton = __module.singleton
+afind_instance = __MODULE.afind_instance
+aget_instance = __MODULE.aget_instance
+aget_lazy_instance = __MODULE.aget_lazy_instance
+constant = __MODULE.constant
+find_instance = __MODULE.find_instance
+get_instance = __MODULE.get_instance
+get_lazy_instance = __MODULE.get_lazy_instance
+inject = __MODULE.inject
+injectable = __MODULE.injectable
+scoped = __MODULE.scoped
+set_constant = __MODULE.set_constant
+should_be_injectable = __MODULE.should_be_injectable
+singleton = __MODULE.singleton
 
+@asynccontextmanager
+def adefine_scope(name: str, *, shared: bool = ...) -> AsyncIterator[None]: ...
+@contextmanager
+def define_scope(name: str, *, shared: bool = ...) -> Iterator[None]: ...
 def mod(name: str = ..., /) -> Module:
     """
     Short syntax for `Module.from_name`.
@@ -107,6 +104,21 @@ class Module:
         Decorator applicable to a class or function. It is used to indicate how the
         singleton will be constructed. At injection time, the injected instance will
         always be the same.
+        """
+
+    def scoped[**P, T](
+        self,
+        scope_name: str,
+        /,
+        *,
+        inject: bool = ...,
+        on: _TypeInfo[T] = (),
+        mode: Mode | ModeStr = ...,
+    ) -> Any:
+        """
+        Decorator applicable to a class or function or generator function. It is used
+        to indicate how the scoped instance will be constructed. At injection time, the
+        injected instance is retrieved from the scope.
         """
 
     def should_be_injectable[T](self, wrapped: type[T] = ..., /) -> Any:
@@ -248,12 +260,13 @@ class Module:
         Function to remove a module in use.
         """
 
+    @contextmanager
     def use_temporarily(
         self,
         module: Module,
         *,
         priority: Priority | PriorityStr = ...,
-    ) -> ContextManager[None] | ContextDecorator:
+    ) -> Iterator[None]:
         """
         Context manager or decorator for temporary use of a module.
         """

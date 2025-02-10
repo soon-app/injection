@@ -1,4 +1,12 @@
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Callable,
+    Generator,
+    Iterable,
+    Iterator,
+)
 from inspect import isfunction
 from types import GenericAlias, UnionType
 from typing import (
@@ -23,7 +31,7 @@ def get_return_types(*args: TypeInfo[Any]) -> Iterator[InputType[Any]]:
         ):
             inner_args = arg
 
-        elif isfunction(arg) and (return_type := get_type_hints(arg).get("return")):
+        elif isfunction(arg) and (return_type := get_return_hint(arg)):
             inner_args = (return_type,)
 
         else:
@@ -31,6 +39,29 @@ def get_return_types(*args: TypeInfo[Any]) -> Iterator[InputType[Any]]:
             continue
 
         yield from get_return_types(*inner_args)
+
+
+def get_return_hint[T](function: Callable[..., T]) -> InputType[T] | None:
+    return get_type_hints(function).get("return")
+
+
+def get_yield_hint[T](
+    function: Callable[..., Iterator[T]] | Callable[..., AsyncIterator[T]],
+) -> InputType[T] | None:
+    return_type = get_return_hint(function)
+
+    if get_origin(return_type) not in {
+        AsyncGenerator,
+        AsyncIterable,
+        AsyncIterator,
+        Generator,
+        Iterable,
+        Iterator,
+    }:
+        return None
+
+    args = get_args(return_type)
+    return next(iter(args), None)
 
 
 def standardize_types(
