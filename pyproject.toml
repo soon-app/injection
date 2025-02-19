@@ -61,6 +61,15 @@ exclude_lines = [
 [tool.coverage.run]
 omit = ["bench.py"]
 
+[tool.hatch.build]
+skip-excluded-dirs = true
+
+[tool.hatch.build.targets.sdist]
+include = ["injection"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["injection"]
+
 [tool.mypy]
 check_untyped_defs = true
 disallow_any_generics = true
@@ -76,15 +85,6 @@ no_implicit_reexport = true
 plugins = ["pydantic.mypy"]
 warn_redundant_casts = true
 warn_unused_ignores = true
-
-[tool.hatch.build]
-skip-excluded-dirs = true
-
-[tool.hatch.build.targets.sdist]
-include = ["injection"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["injection"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

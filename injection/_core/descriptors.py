@@ -10,9 +10,15 @@ class LazyInstance[T]:
 
     __value: Invertible[T]
 
-    def __init__(self, cls: InputType[T], module: Module | None = None) -> None:
+    def __init__(
+        self,
+        cls: InputType[T],
+        /,
+        default: T = NotImplemented,
+        module: Module | None = None,
+    ) -> None:
         module = module or mod()
-        self.__value = module.get_lazy_instance(cls, default=NotImplemented)
+        self.__value = module.get_lazy_instance(cls, default)
 
     def __get__(
         self,

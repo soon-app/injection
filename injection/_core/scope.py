@@ -3,14 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import AsyncIterator, Iterator, MutableMapping
-from contextlib import (
-    AsyncContextDecorator,
-    AsyncExitStack,
-    ContextDecorator,
-    ExitStack,
-    asynccontextmanager,
-    contextmanager,
-)
+from contextlib import AsyncExitStack, ExitStack, asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -19,6 +12,7 @@ from typing import (
     AsyncContextManager,
     ContextManager,
     Final,
+    NoReturn,
     Protocol,
     Self,
     runtime_checkable,
@@ -163,7 +157,7 @@ class BaseScope[T](Scope, ABC):
     )
 
 
-class AsyncScope(AsyncContextDecorator, BaseScope[AsyncExitStack]):
+class AsyncScope(BaseScope[AsyncExitStack]):
     __slots__ = ()
 
     def __init__(self) -> None:
@@ -188,7 +182,7 @@ class AsyncScope(AsyncContextDecorator, BaseScope[AsyncExitStack]):
         return self.delegate.enter_context(context_manager)
 
 
-class SyncScope(ContextDecorator, BaseScope[ExitStack]):
+class SyncScope(BaseScope[ExitStack]):
     __slots__ = ()
 
     def __init__(self) -> None:
@@ -206,7 +200,7 @@ class SyncScope(ContextDecorator, BaseScope[ExitStack]):
     ) -> Any:
         return self.delegate.__exit__(exc_type, exc_value, traceback)
 
-    async def aenter[T](self, context_manager: AsyncContextManager[T]) -> T:
+    async def aenter[T](self, context_manager: AsyncContextManager[T]) -> NoReturn:
         raise ScopeError(
             "Synchronous scope doesn't support asynchronous context manager."
         )

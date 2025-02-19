@@ -46,7 +46,13 @@ class Injectable[T](Protocol):
     def get_instance(self) -> T: ...
 
 class LazyInstance[T]:
-    def __init__(self, cls: _InputType[T], module: Module = ...) -> None: ...
+    def __init__(
+        self,
+        cls: _InputType[T],
+        /,
+        default: T = ...,
+        module: Module = ...,
+    ) -> None: ...
     @overload
     def __get__(self, instance: object, owner: type | None = ...) -> T: ...
     @overload

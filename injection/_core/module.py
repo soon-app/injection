@@ -445,7 +445,7 @@ class Module(Broker, EventListener):
         mode: Mode | ModeStr = Mode.get_default(),
     ) -> Any:
         def decorator(
-            wp: Callable[P, T]
+            wrapped: Callable[P, T]
             | Callable[P, Awaitable[T]]
             | Callable[P, Iterator[T]]
             | Callable[P, AsyncIterator[T]],
@@ -463,19 +463,19 @@ class Module(Broker, EventListener):
                 | Callable[P, AsyncContextManager[T]]
             )
 
-            if isasyncgenfunction(wp):
-                hint = get_yield_hint(wp)
+            if isasyncgenfunction(wrapped):
+                hint = get_yield_hint(wrapped)
                 injectable_class = AsyncCMScopedInjectable
-                wrapper = asynccontextmanager(wp)
+                wrapper = asynccontextmanager(wrapped)
 
-            elif isgeneratorfunction(wp):
-                hint = get_yield_hint(wp)
+            elif isgeneratorfunction(wrapped):
+                hint = get_yield_hint(wrapped)
                 injectable_class = CMScopedInjectable
-                wrapper = contextmanager(wp)
+                wrapper = contextmanager(wrapped)
 
             else:
                 injectable_class = SimpleScopedInjectable
-                hint = wrapper = wp  # type: ignore[assignment]
+                hint = wrapper = wrapped  # type: ignore[assignment]
 
             hints = on if hint is None else (hint, on)
             self.injectable(
@@ -486,7 +486,7 @@ class Module(Broker, EventListener):
                 on=hints,
                 mode=mode,
             )
-            return wp
+            return wrapped
 
         return decorator
 

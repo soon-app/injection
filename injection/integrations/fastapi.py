@@ -1,4 +1,3 @@
-from collections.abc import Awaitable
 from types import GenericAlias
 from typing import Any, TypeAliasType
 
@@ -12,27 +11,17 @@ __all__ = ("Inject",)
 def Inject[T](  # noqa: N802
     cls: type[T] | TypeAliasType | GenericAlias,
     /,
+    default: T = NotImplemented,
     module: Module | None = None,
 ) -> Any:
     """
     Declare a FastAPI dependency with `python-injection`.
     """
 
-    dependency: InjectionDependency[T] = InjectionDependency(cls, module or mod())
-    return Depends(dependency, use_cache=False)
+    module = module or mod()
+    lazy_instance = module.aget_lazy_instance(cls, default)
 
+    async def getter() -> T:
+        return await lazy_instance
 
-class InjectionDependency[T]:
-    __slots__ = ("__awaitable",)
-
-    __awaitable: Awaitable[T]
-
-    def __init__(
-        self,
-        cls: type[T] | TypeAliasType | GenericAlias,
-        module: Module,
-    ) -> None:
-        self.__awaitable = module.aget_lazy_instance(cls, default=NotImplemented)
-
-    async def __call__(self) -> T:
-        return await self.__awaitable
+    return Depends(getter, use_cache=False)
