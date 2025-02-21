@@ -1,56 +1,55 @@
-from collections.abc import Callable, Iterator, Mapping
-from types import MappingProxyType
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from functools import partial
 
-from injection._core.common.invertible import Invertible
+from injection._core.common.asynchronous import SimpleAwaitable
+from injection._core.common.invertible import Invertible, SimpleInvertible
+
+
+def lazy[T](factory: Callable[..., T]) -> Invertible[T]:
+    def cache() -> Iterator[T]:
+        nonlocal factory
+        value = factory()
+        del factory
+
+        while True:
+            yield value
+
+    getter = partial(next, cache())
+    return SimpleInvertible(getter)
+
+
+def alazy[T](factory: Callable[..., Awaitable[T]]) -> Awaitable[T]:
+    async def cache() -> AsyncIterator[T]:
+        nonlocal factory
+        value = await factory()
+        del factory
+
+        while True:
+            yield value
+
+    getter = partial(anext, cache())
+    return SimpleAwaitable(getter)
 
 
 class Lazy[T](Invertible[T]):
-    __slots__ = ("__iterator", "__is_set")
+    __slots__ = ("__invertible", "__is_set")
 
-    __iterator: Iterator[T]
+    __invertible: Invertible[T]
     __is_set: bool
 
     def __init__(self, factory: Callable[..., T]) -> None:
-        self.__setup_cache(factory)
+        @lazy
+        def invertible() -> T:
+            value = factory()
+            self.__is_set = True
+            return value
+
+        self.__invertible = invertible
+        self.__is_set = False
 
     def __invert__(self) -> T:
-        return next(self.__iterator)
+        return ~self.__invertible
 
     @property
     def is_set(self) -> bool:
         return self.__is_set
-
-    def __setup_cache(self, factory: Callable[..., T]) -> None:
-        def infinite_yield() -> Iterator[T]:
-            nonlocal factory
-            cached = factory()
-            self.__is_set = True
-            del factory
-
-            while True:
-                yield cached
-
-        self.__iterator = infinite_yield()
-        self.__is_set = False
-
-
-class LazyMapping[K, V](Mapping[K, V]):
-    __slots__ = ("__lazy",)
-
-    __lazy: Lazy[Mapping[K, V]]
-
-    def __init__(self, iterator: Iterator[tuple[K, V]]) -> None:
-        self.__lazy = Lazy(lambda: MappingProxyType(dict(iterator)))
-
-    def __getitem__(self, key: K, /) -> V:
-        return (~self.__lazy)[key]
-
-    def __iter__(self) -> Iterator[K]:
-        yield from ~self.__lazy
-
-    def __len__(self) -> int:
-        return len(~self.__lazy)
-
-    @property
-    def is_set(self) -> bool:
-        return self.__lazy.is_set
