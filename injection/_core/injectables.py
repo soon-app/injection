@@ -139,8 +139,7 @@ class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
         return await scope.aenter(cm)
 
     def build(self, scope: Scope) -> NoReturn:
-        # TODO
-        raise
+        raise RuntimeError("Can't use async context manager synchronously.")
 
 
 class CMScopedInjectable[T](ScopedInjectable[ContextManager[T], T]):

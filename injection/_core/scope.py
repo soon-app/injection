@@ -201,9 +201,7 @@ class SyncScope(BaseScope[ExitStack]):
         return self.delegate.__exit__(exc_type, exc_value, traceback)
 
     async def aenter[T](self, context_manager: AsyncContextManager[T]) -> NoReturn:
-        raise ScopeError(
-            "Synchronous scope doesn't support asynchronous context manager."
-        )
+        raise ScopeError("Synchronous scope doesn't support async context manager.")
 
     def enter[T](self, context_manager: ContextManager[T]) -> T:
         return self.delegate.enter_context(context_manager)

@@ -33,8 +33,7 @@ class AsyncCaller[**P, T](Caller[P, T]):
         return await self.callable(*args, **kwargs)
 
     def call(self, /, *args: P.args, **kwargs: P.kwargs) -> NoReturn:
-        # TODO
-        raise
+        raise RuntimeError("Can't call async callable synchronously.")
 
 
 @dataclass(repr=False, eq=False, frozen=True, slots=True)
