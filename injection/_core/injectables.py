@@ -12,7 +12,7 @@ from typing import (
     runtime_checkable,
 )
 
-from injection._core.common.asynchronous import Caller, run_sync
+from injection._core.common.asynchronous import Caller
 from injection._core.scope import Scope, get_active_scopes, get_scope
 from injection.exceptions import InjectionError
 
@@ -138,8 +138,9 @@ class AsyncCMScopedInjectable[T](ScopedInjectable[AsyncContextManager[T], T]):
         cm = await self.factory.acall()
         return await scope.aenter(cm)
 
-    def build(self, scope: Scope) -> T:
-        return run_sync(self.abuild(scope))
+    def build(self, scope: Scope) -> NoReturn:
+        # TODO
+        raise
 
 
 class CMScopedInjectable[T](ScopedInjectable[ContextManager[T], T]):

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import (
     AsyncIterator,
     Awaitable,
@@ -26,7 +25,6 @@ from inspect import (
 )
 from inspect import signature as inspect_signature
 from logging import Logger, getLogger
-from queue import Empty, Queue
 from types import MethodType
 from typing import (
     Any,
@@ -50,7 +48,7 @@ from injection._core.common.asynchronous import (
 from injection._core.common.event import Event, EventChannel, EventListener
 from injection._core.common.invertible import Invertible, SimpleInvertible
 from injection._core.common.key import new_short_key
-from injection._core.common.lazy import Lazy, LazyMapping
+from injection._core.common.lazy import Lazy, alazy, lazy
 from injection._core.common.type import (
     InputType,
     TypeInfo,
@@ -296,6 +294,9 @@ class Locator(Broker):
 
     async def all_ready(self) -> None:
         for injectable in self.__injectables:
+            if injectable.is_locked:
+                continue
+
             await injectable.aget_instance()
 
     def add_listener(self, listener: EventListener) -> Self:
@@ -511,7 +512,7 @@ class Module(Broker, EventListener):
         mode: Mode | ModeStr = Mode.get_default(),
     ) -> Any:
         def decorator(wp: type[T]) -> type[T]:
-            lazy_instance = Lazy(wp)
+            lazy_instance = lazy(wp)
             self.injectable(
                 lambda: ~lazy_instance,
                 ignore_type_hint=True,
@@ -568,7 +569,7 @@ class Module(Broker, EventListener):
     def make_injected_function(self, wrapped, /):  # type: ignore[no-untyped-def]
         metadata = InjectMetadata(wrapped)
 
-        @metadata.on_setup
+        @metadata.task
         def listen() -> None:
             metadata.update(self)
             self.add_listener(metadata)
@@ -646,12 +647,10 @@ class Module(Broker, EventListener):
 
     def aget_lazy_instance(self, cls, default=None, *, cache=False):  # type: ignore[no-untyped-def]
         if cache:
-            coroutine = self.aget_instance(cls, default)
-            return asyncio.ensure_future(coroutine)
+            return alazy(lambda: self.aget_instance(cls, default))
 
         function = self.make_injected_function(lambda instance=default: instance)
-        metadata = function.__inject_metadata__
-        metadata.set_owner(cls)
+        metadata = function.__inject_metadata__.set_owner(cls)
         return SimpleAwaitable(metadata.acall)
 
     @overload
@@ -674,11 +673,10 @@ class Module(Broker, EventListener):
 
     def get_lazy_instance(self, cls, default=None, *, cache=False):  # type: ignore[no-untyped-def]
         if cache:
-            return Lazy(lambda: self.get_instance(cls, default))
+            return lazy(lambda: self.get_instance(cls, default))
 
         function = self.make_injected_function(lambda instance=default: instance)
-        metadata = function.__inject_metadata__
-        metadata.set_owner(cls)
+        metadata = function.__inject_metadata__.set_owner(cls)
         return SimpleInvertible(metadata.call)
 
     def update[T](self, updater: Updater[T]) -> Self:
@@ -832,10 +830,7 @@ InjectedFunction
 
 @dataclass(repr=False, frozen=True, slots=True)
 class Dependencies:
-    mapping: Mapping[str, Injectable[Any]]
-
-    def __bool__(self) -> bool:
-        return bool(self.mapping)
+    lazy_mapping: Lazy[Mapping[str, Injectable[Any]]]
 
     def __iter__(self) -> Iterator[tuple[str, Any]]:
         for name, injectable in self.mapping.items():
@@ -849,10 +844,11 @@ class Dependencies:
 
     @property
     def are_resolved(self) -> bool:
-        if isinstance(self.mapping, LazyMapping) and not self.mapping.is_set:
-            return False
+        return self.lazy_mapping.is_set
 
-        return bool(self)
+    @property
+    def mapping(self) -> Mapping[str, Injectable[Any]]:
+        return ~self.lazy_mapping
 
     async def aget_arguments(self) -> dict[str, Any]:
         return {key: value async for key, value in self}
@@ -861,12 +857,13 @@ class Dependencies:
         return dict(self)
 
     @classmethod
-    def from_mapping(cls, mapping: Mapping[str, Injectable[Any]]) -> Self:
-        return cls(mapping)
+    def from_iterable(cls, iterable: Iterable[tuple[str, Injectable[Any]]]) -> Self:
+        lazy_mapping = Lazy(lambda: dict(iterable))
+        return cls(lazy_mapping)
 
     @classmethod
     def empty(cls) -> Self:
-        return cls.from_mapping({})
+        return cls.from_iterable(())
 
     @classmethod
     def resolve(
@@ -875,8 +872,8 @@ class Dependencies:
         module: Module,
         owner: type | None = None,
     ) -> Self:
-        dependencies = LazyMapping(cls.__resolver(signature, module, owner))
-        return cls.from_mapping(dependencies)
+        iterable = cls.__resolver(signature, module, owner)
+        return cls.from_iterable(iterable)
 
     @classmethod
     def __resolver(
@@ -917,21 +914,21 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
     __slots__ = (
         "__dependencies",
         "__owner",
-        "__setup_queue",
         "__signature",
+        "__tasks",
         "__wrapped",
     )
 
     __dependencies: Dependencies
     __owner: type | None
-    __setup_queue: Queue[Callable[..., Any]] | None
     __signature: Signature
+    __tasks: deque[Callable[..., Any]]
     __wrapped: Callable[P, T]
 
     def __init__(self, wrapped: Callable[P, T], /) -> None:
         self.__dependencies = Dependencies.empty()
         self.__owner = None
-        self.__setup_queue = Queue()
+        self.__tasks = deque()
         self.__wrapped = wrapped
 
     @property
@@ -964,12 +961,12 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         return self.__bind(args, kwargs, additional_arguments)
 
     async def acall(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        self.__setup()
+        self.__run_tasks()
         arguments = await self.abind(args, kwargs)
         return self.wrapped(*arguments.args, **arguments.kwargs)
 
     def call(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        self.__setup()
+        self.__run_tasks()
         arguments = self.bind(args, kwargs)
         return self.wrapped(*arguments.args, **arguments.kwargs)
 
@@ -989,14 +986,9 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         self.__dependencies = Dependencies.resolve(self.signature, module, self.__owner)
         return self
 
-    def on_setup[**_P, _T](self, wrapped: Callable[_P, _T] | None = None, /) -> Any:
+    def task[**_P, _T](self, wrapped: Callable[_P, _T] | None = None, /) -> Any:
         def decorator(wp: Callable[_P, _T]) -> Callable[_P, _T]:
-            queue = self.__setup_queue
-
-            if queue is None:
-                raise RuntimeError(f"`{self}` is already up.")
-
-            queue.put_nowait(wp)
+            self.__tasks.append(wp)
             return wp
 
         return decorator(wrapped) if wrapped else decorator
@@ -1027,24 +1019,10 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         bound.arguments = bound.arguments | additional_arguments | bound.arguments
         return Arguments(bound.args, bound.kwargs)
 
-    def __close_setup_queue(self) -> None:
-        self.__setup_queue = None
-
-    def __setup(self) -> None:
-        if (queue := self.__setup_queue) is None:
-            return
-
-        while True:
-            try:
-                task = queue.get_nowait()
-            except Empty:
-                break
-
+    def __run_tasks(self) -> None:
+        while tasks := self.__tasks:
+            task = tasks.popleft()
             task()
-            queue.task_done()
-
-        queue.join()
-        self.__close_setup_queue()
 
 
 class InjectedFunction[**P, T](ABC):
