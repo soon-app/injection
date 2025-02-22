@@ -1,5 +1,4 @@
-from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Collection, Iterator
 from importlib import import_module
 from importlib.util import find_spec
 from pkgutil import walk_packages
@@ -18,26 +17,12 @@ def load_profile(*names: str) -> ContextManager[None]:
     A profile name is equivalent to an injection module name.
     """
 
-    modules = tuple(mod(module_name) for module_name in names)
-
-    for module in modules:
-        module.unlock()
-
-    target = mod().unlock().init_modules(*modules)
-
-    del module, modules
-
-    @contextmanager
-    def cleaner() -> Iterator[None]:
-        yield
-        target.unlock().init_modules()
-
-    return cleaner()
+    return mod().load_profile(*names)
 
 
 def load_modules_with_keywords(
     *packages: PythonModule | str,
-    keywords: Iterable[str] | None = None,
+    keywords: Collection[str] | None = None,
 ) -> dict[str, PythonModule]:
     """
     Function to import modules from a Python package if one of the keywords is contained in the Python script.
@@ -54,16 +39,16 @@ def load_modules_with_keywords(
             f"import {injection_package_name}",
         )
 
-    b_keywords = tuple(keyword.encode() for keyword in keywords)
-
     def predicate(module_name: str) -> bool:
-        if (spec := find_spec(module_name)) and (module_path := spec.origin):
-            with open(module_path, "rb") as script:
-                for line in script:
-                    line = b" ".join(line.split(b" ")).strip()
+        spec = find_spec(module_name)
 
-                    if line and any(keyword in line for keyword in b_keywords):
-                        return True
+        if spec and (module_path := spec.origin):
+            with open(module_path, "r") as file:
+                python_script = file.read()
+
+            return bool(python_script) and any(
+                keyword in python_script for keyword in keywords
+            )
 
         return False
 

@@ -74,11 +74,19 @@ class Module:
     def __contains__(self, cls: _InputType[Any], /) -> bool: ...
     @property
     def is_locked(self) -> bool: ...
-    def inject[**P, T](self, wrapped: Callable[P, T] = ..., /) -> Any:
+    def inject[**P, T](
+        self,
+        wrapped: Callable[P, T] = ...,
+        /,
+        *,
+        threadsafe: bool = ...,
+    ) -> Any:
         """
         Decorator applicable to a class or function. Inject function dependencies using
         parameter type annotations. If applied to a class, the dependencies resolved
         will be those of the `__init__` method.
+
+        With `threadsafe=True`, the injection logic is wrapped in a `threading.Lock`.
         """
 
     def injectable[**P, T](
@@ -166,6 +174,7 @@ class Module:
         self,
         wrapped: Callable[P, T],
         /,
+        threadsafe: bool = ...,
     ) -> Callable[P, T]: ...
     async def afind_instance[T](self, cls: _InputType[T]) -> T: ...
     def find_instance[T](self, cls: _InputType[T]) -> T:
@@ -295,6 +304,8 @@ class Module:
         Function to unlock the module by deleting cached instances of singletons.
         """
 
+    @contextmanager
+    def load_profile(self, *names: str) -> Iterator[None]: ...
     async def all_ready(self) -> None: ...
     def add_logger(self, logger: Logger) -> Self: ...
     @classmethod
