@@ -34,12 +34,12 @@ class _ScopeState:
         default_factory=lambda: ContextVar(f"scope@{new_short_key()}"),
         init=False,
     )
-    __references: set[Scope] = field(
-        default_factory=set,
+    __default: Scope | None = field(
+        default=None,
         init=False,
     )
-    __shared_value: Scope | None = field(
-        default=None,
+    __references: set[Scope] = field(
+        default_factory=set,
         init=False,
     )
 
@@ -47,8 +47,8 @@ class _ScopeState:
     def active_scopes(self) -> Iterator[Scope]:
         yield from self.__references
 
-        if shared_value := self.__shared_value:
-            yield shared_value
+        if default := self.__default:
+            yield default
 
     @contextmanager
     def bind_contextual_scope(self, scope: Scope) -> Iterator[None]:
@@ -69,15 +69,15 @@ class _ScopeState:
                 "are defined on the same name."
             )
 
-        self.__shared_value = scope
+        self.__default = scope
 
         try:
             yield
         finally:
-            self.__shared_value = None
+            self.__default = None
 
     def get_scope(self) -> Scope | None:
-        return self.__context_var.get(self.__shared_value)
+        return self.__context_var.get(self.__default)
 
 
 __SCOPES: Final[defaultdict[str, _ScopeState]] = defaultdict(_ScopeState)
@@ -125,11 +125,8 @@ def _bind_scope(name: str, scope: Scope, shared: bool) -> Iterator[None]:
         state.bind_shared_scope(scope) if shared else state.bind_contextual_scope(scope)
     )
 
-    try:
-        with strategy:
-            yield
-    finally:
-        scope.cache.clear()
+    with strategy:
+        yield
 
 
 @runtime_checkable

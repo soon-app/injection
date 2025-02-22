@@ -11,7 +11,7 @@ from collections.abc import (
     Iterator,
     Mapping,
 )
-from contextlib import asynccontextmanager, contextmanager, suppress
+from contextlib import asynccontextmanager, contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import partialmethod, singledispatchmethod, update_wrapper
@@ -25,6 +25,7 @@ from inspect import (
 )
 from inspect import signature as inspect_signature
 from logging import Logger, getLogger
+from threading import Lock
 from types import MethodType
 from typing import (
     Any,
@@ -542,13 +543,19 @@ class Module(Broker, EventListener):
         )
         return self
 
-    def inject[**P, T](self, wrapped: Callable[P, T] | None = None, /) -> Any:
+    def inject[**P, T](
+        self,
+        wrapped: Callable[P, T] | None = None,
+        /,
+        *,
+        threadsafe: bool = False,
+    ) -> Any:
         def decorator(wp: Callable[P, T]) -> Callable[P, T]:
             if isclass(wp):
-                wp.__init__ = self.inject(wp.__init__)
+                wp.__init__ = self.inject(wp.__init__, threadsafe=threadsafe)
                 return wp
 
-            return self.make_injected_function(wp)
+            return self.make_injected_function(wp, threadsafe)
 
         return decorator(wrapped) if wrapped else decorator
 
@@ -557,6 +564,7 @@ class Module(Broker, EventListener):
         self,
         wrapped: Callable[P, T],
         /,
+        threadsafe: bool = ...,
     ) -> SyncInjectedFunction[P, T]: ...
 
     @overload
@@ -564,10 +572,11 @@ class Module(Broker, EventListener):
         self,
         wrapped: Callable[P, Awaitable[T]],
         /,
+        threadsafe: bool = ...,
     ) -> AsyncInjectedFunction[P, T]: ...
 
-    def make_injected_function(self, wrapped, /):  # type: ignore[no-untyped-def]
-        metadata = InjectMetadata(wrapped)
+    def make_injected_function(self, wrapped, /, threadsafe=False):  # type: ignore[no-untyped-def]
+        metadata = InjectMetadata(wrapped, threadsafe)
 
         @metadata.task
         def listen() -> None:
@@ -753,6 +762,23 @@ class Module(Broker, EventListener):
 
         return self
 
+    def load_profile(self, *names: str) -> ContextManager[None]:
+        modules = tuple(self.from_name(name) for name in names)
+
+        for module in modules:
+            module.unlock()
+
+        self.unlock().init_modules(*modules)
+
+        del module, modules
+
+        @contextmanager
+        def cleaner() -> Iterator[None]:
+            yield
+            self.unlock().init_modules()
+
+        return cleaner()
+
     async def all_ready(self) -> None:
         for broker in self.__brokers:
             await broker.all_ready()
@@ -913,6 +939,7 @@ class Arguments(NamedTuple):
 class InjectMetadata[**P, T](Caller[P, T], EventListener):
     __slots__ = (
         "__dependencies",
+        "__lock",
         "__owner",
         "__signature",
         "__tasks",
@@ -920,13 +947,15 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
     )
 
     __dependencies: Dependencies
+    __lock: ContextManager[Any]
     __owner: type | None
     __signature: Signature
     __tasks: deque[Callable[..., Any]]
     __wrapped: Callable[P, T]
 
-    def __init__(self, wrapped: Callable[P, T], /) -> None:
+    def __init__(self, wrapped: Callable[P, T], /, threadsafe: bool) -> None:
         self.__dependencies = Dependencies.empty()
+        self.__lock = Lock() if threadsafe else nullcontext()
         self.__owner = None
         self.__tasks = deque()
         self.__wrapped = wrapped
@@ -961,13 +990,17 @@ class InjectMetadata[**P, T](Caller[P, T], EventListener):
         return self.__bind(args, kwargs, additional_arguments)
 
     async def acall(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        self.__run_tasks()
-        arguments = await self.abind(args, kwargs)
+        with self.__lock:
+            self.__run_tasks()
+            arguments = await self.abind(args, kwargs)
+
         return self.wrapped(*arguments.args, **arguments.kwargs)
 
     def call(self, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        self.__run_tasks()
-        arguments = self.bind(args, kwargs)
+        with self.__lock:
+            self.__run_tasks()
+            arguments = self.bind(args, kwargs)
+
         return self.wrapped(*arguments.args, **arguments.kwargs)
 
     def set_owner(self, owner: type) -> Self:
