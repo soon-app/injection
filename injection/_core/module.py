@@ -739,11 +739,11 @@ class Module(Broker, EventListener):
         module: Module,
         *,
         priority: Priority | PriorityStr = Priority.get_default(),
-    ) -> Iterator[None]:
+    ) -> Iterator[Self]:
         self.use(module, priority=priority)
 
         try:
-            yield
+            yield self
         finally:
             self.stop_using(module)
 
@@ -762,7 +762,7 @@ class Module(Broker, EventListener):
 
         return self
 
-    def load_profile(self, *names: str) -> ContextManager[None]:
+    def load_profile(self, *names: str) -> ContextManager[Self]:
         modules = tuple(self.from_name(name) for name in names)
 
         for module in modules:
@@ -773,8 +773,8 @@ class Module(Broker, EventListener):
         del module, modules
 
         @contextmanager
-        def cleaner() -> Iterator[None]:
-            yield
+        def cleaner() -> Iterator[Self]:
+            yield self
             self.unlock().init_modules()
 
         return cleaner()

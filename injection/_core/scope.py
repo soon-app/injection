@@ -121,11 +121,8 @@ def _bind_scope(name: str, scope: Scope, shared: bool) -> Iterator[None]:
             f"Scope `{name}` is already defined in the current context."
         )
 
-    strategy = (
-        state.bind_shared_scope(scope) if shared else state.bind_contextual_scope(scope)
-    )
-
-    with strategy:
+    strategy = state.bind_shared_scope if shared else state.bind_contextual_scope
+    with strategy(scope):
         yield
 
 

@@ -55,6 +55,9 @@ if __name__ == "__main__":
 
 ## Resources
 
+> ⚠️ The package isn't threadsafe, for better performance in single-threaded applications and those using `asyncio`.
+> So remember to use `threading.Lock` if you're writing a multithreaded program.
+
 * [**Basic usage**](https://github.com/100nm/python-injection/tree/prod/documentation/basic-usage.md)
 * [**Scoped dependencies**](https://github.com/100nm/python-injection/tree/prod/documentation/scoped-dependencies.md)
 * [**Testing**](https://github.com/100nm/python-injection/tree/prod/documentation/testing.md)

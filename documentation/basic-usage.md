@@ -79,6 +79,16 @@ class SomeDataClass:
     service_a: ServiceA = ...
 ```
 
+### Threadsafe injection
+
+With `threadsafe=True`, the injection logic is wrapped in a `threading.Lock`.
+
+```python
+@inject(threadsafe=True)
+def some_function(service_a: ServiceA):
+    """ function implementation """
+```
+
 ## Get an instance
 
 _Example with `get_instance` function:_

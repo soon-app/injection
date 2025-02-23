@@ -4,15 +4,70 @@
 
 ## [FastAPI](https://github.com/fastapi/fastapi)
 
-Exemple:
+### Inject a dependency
+
+Here's how to inject an instance into a FastAPI endpoint.
+
+> Import:
 
 ```python
-from fastapi import FastAPI
 from injection.integrations.fastapi import Inject
+```
 
-app = FastAPI()
+> With **Annotated**:
 
+```python
 @app.get("/")
-async def my_endpoint(service: MyService = Inject(MyService)):
+async def my_endpoint(
+    service: Annotated[MyService, Inject(MyService)],
+) -> None:
     ...
+```
+
+> Without **Annotated**:
+
+```python
+@app.get("/")
+async def my_endpoint(
+    service: MyService = Inject(MyService),
+) -> None:
+    ...
+```
+
+### Useful scopes
+
+Two fairly common scopes in FastAPI:
+* **Application lifespan scope**: associate with application lifespan.
+* **Request scope**: associate with http request lifetime.
+
+_For a better understanding of the scopes, [here's the associated documentation](scoped-dependencies.md)._
+
+Here's how to configure FastAPI:
+
+```python
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from enum import StrEnum, auto
+
+from fastapi import FastAPI, Request, Response
+from injection import adefine_scope
+
+class InjectionScope(StrEnum):
+    LIFESPAN = auto()
+    REQUEST = auto()
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async with adefine_scope(InjectionScope.LIFESPAN, shared=True):
+        yield
+
+app = FastAPI(lifespan=lifespan)
+
+@app.middleware("http")
+async def define_request_scope_middleware(
+    request: Request,
+    handler: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    async with adefine_scope(InjectionScope.REQUEST):
+        return await handler(request)
 ```

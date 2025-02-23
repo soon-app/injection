@@ -281,7 +281,7 @@ class Module:
         module: Module,
         *,
         priority: Priority | PriorityStr = ...,
-    ) -> Iterator[None]:
+    ) -> Iterator[Self]:
         """
         Context manager or decorator for temporary use of a module.
         """
@@ -305,7 +305,7 @@ class Module:
         """
 
     @contextmanager
-    def load_profile(self, *names: str) -> Iterator[None]: ...
+    def load_profile(self, *names: str) -> Iterator[Self]: ...
     async def all_ready(self) -> None: ...
     def add_logger(self, logger: Logger) -> Self: ...
     @classmethod
