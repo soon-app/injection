@@ -11,7 +11,7 @@ test_injectable = __MODULE.injectable
 test_scoped = __MODULE.scoped
 test_singleton = __MODULE.singleton
 
-def load_test_profile(*names: str) -> ContextManager[None]:
+def load_test_profile(*names: str) -> ContextManager[Module]:
     """
     Context manager or decorator for temporary use test module.
     """

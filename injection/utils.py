@@ -5,13 +5,13 @@ from pkgutil import walk_packages
 from types import ModuleType as PythonModule
 from typing import ContextManager
 
+from injection import Module, mod
 from injection import __name__ as injection_package_name
-from injection import mod
 
 __all__ = ("load_modules_with_keywords", "load_packages", "load_profile")
 
 
-def load_profile(*names: str) -> ContextManager[None]:
+def load_profile(*names: str) -> ContextManager[Module]:
     """
     Injection module initialization function based on profile name.
     A profile name is equivalent to an injection module name.

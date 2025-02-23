@@ -19,7 +19,7 @@ There are two kinds of scopes:
 
 First of all, the scope must be defined:
 
-*By default, the `shared` parameter is `False`.*
+_By default, the `shared` parameter is `False`._
 
 > Define an asynchronous scope:
 
@@ -47,7 +47,7 @@ def main() -> None:
 
 ### "contextmanager-like" recipes
 
-*Anything after the `yield` keyword will be executed when the scope is closed.*
+_Anything after the `yield` keyword will be executed when the scope is closed._
 
 > Asynchronous (asynchronous scope required):
 
